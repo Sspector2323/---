@@ -29,7 +29,7 @@ ADMIN_HELP = (
     "<b>Админка бота</b>\n\n"
     "/broadcasts — готовые рассылки (колесо, стрим, итоги и т.д.)\n"
     "/send — ответь этой командой на любое сообщение (текст, фото, видео), "
-    "и бот разошлёт его копию всей базе\n"
+    "и выбери: разослать копию всей базе или опубликовать в канал\n"
     "/stats — сколько людей в базе\n"
     "/myid — твой Telegram ID"
 )
@@ -79,9 +79,27 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder) -> Router:
             await message.answer("Ответь командой /send на сообщение, которое нужно разослать.")
             return
         await message.answer(
-            "Разослать это сообщение всей базе?",
-            reply_markup=_confirm_kb(f"cp:{src.message_id}"),
+            "Куда отправить это сообщение?",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="👥 Всей базе", callback_data=f"cp:{src.message_id}")],
+                    [InlineKeyboardButton(text="📣 В канал", callback_data=f"cpch:{src.message_id}")],
+                    [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")],
+                ]
+            ),
         )
+
+    @router.callback_query(F.data.startswith("cpch:"), F.from_user.id.func(is_admin))
+    async def copy_to_channel(call: CallbackQuery, bot: Bot):
+        message_id = int(call.data.split(":", 1)[1])
+        await call.answer()
+        try:
+            await bot.copy_message(cfg.promo_channel_id, call.message.chat.id, message_id)
+            await call.message.edit_text("✅ Отправлено в канал")
+        except Exception as e:
+            await call.message.edit_text(
+                f"Ошибка отправки в канал: {e}\n\nПроверь, что бот — админ канала с правом публиковать сообщения."
+            )
 
     @router.callback_query(F.data.startswith("bc:"), F.from_user.id.func(is_admin))
     async def broadcast_preview(call: CallbackQuery, bot: Bot):
