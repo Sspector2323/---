@@ -12,9 +12,17 @@ from ..config import DATA_DIR
 OS = platform.system()  # Windows / Darwin / Linux
 
 
-def _run(cmd, shell=False, timeout=60) -> str:
+def _console_encoding() -> str:
+    """Кодировка вывода консольных программ: на русской Windows это cp866, а не UTF-8."""
+    if OS == "Windows":
+        import ctypes
+        return f"cp{ctypes.windll.kernel32.GetOEMCP()}"
+    return "utf-8"
+
+
+def _run(cmd, shell=False, timeout=60, encoding=None) -> str:
     r = subprocess.run(cmd, shell=shell, capture_output=True, text=True, timeout=timeout,
-                       encoding="utf-8", errors="replace")
+                       encoding=encoding or _console_encoding(), errors="replace")
     out = (r.stdout + r.stderr).strip()
     return out[-4000:] if out else f"готово (код {r.returncode})"
 
@@ -227,7 +235,8 @@ def top_processes():
       {"command": S("Команда")}, ["command"], dangerous=True)
 def run_command(command: str):
     if OS == "Windows" and shutil.which("powershell"):
-        return _run(["powershell", "-NoProfile", "-Command", command], timeout=120)
+        utf8 = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; $OutputEncoding = [Text.Encoding]::UTF8; "
+        return _run(["powershell", "-NoProfile", "-Command", utf8 + command], timeout=120, encoding="utf-8")
     return _run(command, shell=True, timeout=120)
 
 
