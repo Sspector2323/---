@@ -1,0 +1,1388 @@
+{
+  "name": "Бот Витус Общение",
+  "nodes": [
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger3').item.json.message.chat.id }}",
+        "text": "={{ $json.output }}",
+        "replyMarkup": "inlineKeyboard",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2384,
+        -144
+      ],
+      "id": "48c136c3-23cb-4d8b-83d0-a81ef941be89",
+      "name": "Ии-ответ",
+      "webhookId": "7bbddae5-110d-4515-a6f7-3ce5ff8c35b5",
+      "credentials": {
+        "telegramApi": {
+          "id": "ryOhu15z0AlxfnHm",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Рассылки по базе\n\nЧто делает: Берет всех игроков из таблицы и разом отправляет им сообщение.\n\nЗачем: Для ручного запуска розыгрышей или анонсов.\n\nВ планах: Подключим авто-рассылку. Как только у Витуса выходит пост о стриме — бот сам мгновенно пересылает его всей базе.",
+        "height": 384,
+        "width": 464
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1712,
+        -208
+      ],
+      "id": "a87b5e41-5f46-47fe-9117-64bc716e1c4c",
+      "name": "Sticky Note19"
+    },
+    {
+      "parameters": {
+        "content": "## РАССЫЛКИ\n\n",
+        "height": 1248,
+        "width": 800
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1168,
+        -208
+      ],
+      "id": "cd068f72-2725-431a-b15a-0ee611ae19e2",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "compare": "selectedFields",
+        "fieldsToCompare": "ID",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        -928,
+        256
+      ],
+      "id": "216f4bee-b5ab-4947-bbe5-d222686c71f5",
+      "name": "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID1"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw",
+          "mode": "list",
+          "cachedResultName": "База игроков",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Основная база",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1104,
+        256
+      ],
+      "id": "73c7f47e-b6c1-4165-948f-8f27b39d2ed8",
+      "name": "БАЗА ИГРОКОВ1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "OBnBm7gHxWHjXc9L",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $json.ID }}",
+        "file": "https://i.postimg.cc/VLx01QdJ/kreativ-strimy-2209.jpg",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🔥СМОТРЕТЬ СТРИМ🔥",
+                    "additionalFields": {
+                      "url": "https://kick.com/vituss"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "caption": "=<b>Погнали! Стрим уже идёт</b>👇 📱🔴https://kick.com/vituss \n\n📌 <b>Актуальные зеркала казино:</b> https://t.me/vituss2/644 \n\n━━━━━━━━━━━━━━━ \n<b>Подпишись, чтобы ничего не пропустить:</b> \n\n🚀<b>Telegram, медийный, без рекламы:</b> \nhttps://t.me/vitussmain \n📷 <b>Instagram:</b> https://www.instagram.com/vituskik \n▶️ <b>YouTube:</b> https://vitussbritva.com/youtube \n🟦 <b>ВК, музыка со стримов:</b> https://vk.com/vitussmain\n",
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        256
+      ],
+      "id": "61fdaf5d-df76-42c3-9f6b-f9243ed5ffda",
+      "name": "Рассылка СТРИМЫ",
+      "webhookId": "f8642053-46c5-4382-b3f3-10d6ff1c9739",
+      "credentials": {
+        "telegramApi": {
+          "id": "ryOhu15z0AlxfnHm",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1344,
+        256
+      ],
+      "id": "70a87010-5073-40cb-94ef-75719680f66e",
+      "name": "ЗАПУСК РАССЫЛКИ"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Основная база",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1120,
+        -160
+      ],
+      "id": "405cb726-a40a-42c4-b83d-2155e4d60964",
+      "name": "БАЗА ИГРОКОВ2",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "OBnBm7gHxWHjXc9L",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "compare": "selectedFields",
+        "fieldsToCompare": "ID",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        -912,
+        -160
+      ],
+      "id": "4d0d72cc-9394-4187-90b3-ee685d0c0303",
+      "name": "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID2"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $json.ID }}",
+        "file": "https://i.postimg.cc/GmYMvqHN/ITOGI.jpg",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🔥ПЕРЕЙТИ НА КАНАЛ🔥",
+                    "additionalFields": {
+                      "url": "https://t.me/+r6wFfL29dtYzNzM6"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "caption": "=ИТОГИ ПРОШЕДШЕГО КОЛЕСА🎰\n\nНашёл себя в списке победителей? \n\nЕсли ты не успел принять участие в прошлом розыгрыше, то через 10 минут стартует новое колесо. \n\nНе пропусти!",
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -384,
+        -368
+      ],
+      "id": "c271eb18-998d-4e78-9383-c3e06c2956bd",
+      "name": "Рассылка итоги розыгрыша",
+      "webhookId": "f8642053-46c5-4382-b3f3-10d6ff1c9739",
+      "credentials": {
+        "telegramApi": {
+          "id": "ryOhu15z0AlxfnHm",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -784,
+        -160
+      ],
+      "id": "a39dd557-ee0b-482e-ad0a-b8ecc35b02d7",
+      "name": "Wait",
+      "webhookId": "1ede282f-e876-45a8-a9d4-162754f5bd33"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -784,
+        256
+      ],
+      "id": "cfe6bbce-238e-4d63-ba7a-cd23dfe3e271",
+      "name": "Wait2",
+      "webhookId": "1ede282f-e876-45a8-a9d4-162754f5bd33"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Telegram Trigger3').item.json.message.from.id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -2624,
+        64
+      ],
+      "id": "4fdb8f53-8e73-406f-bfbe-e685a2185b7d",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Лист1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID": "={{ $json.message.from.id }}",
+            "Name": "={{ $json.message.from.first_name }}",
+            "Username": "={{ $json.message.from.username }}",
+            "Language": "={{ $json.message.from.language_code }}",
+            "Date": "={{ $json.message.date }}",
+            "text": "={{ $json.message.text }}",
+            "Bot": "={{ $json.message.from.is_bot }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "ID",
+              "displayName": "ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Username",
+              "displayName": "Username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Точная дата",
+              "displayName": "Точная дата",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Language",
+              "displayName": "Language",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "text",
+              "displayName": "text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Bot",
+              "displayName": "Bot",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "f9403bc0-755e-4728-897a-31a6c6df0f6f",
+      "name": "База игроков",
+      "type": "n8n-nodes-base.googleSheets",
+      "position": [
+        -3136,
+        -112
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "OBnBm7gHxWHjXc9L",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Telegram Trigger3').item.json.message.text }}",
+        "options": {
+          "systemMessage": "РОЛЬ: Ты — персональный ассистент Витуса. Твоя цель — гнать трафик на розыгрыши и зеркала. Общайся уверенно, прямо и лаконично. Используй гемблинг-сленг: заносы, иксы, зеркало, депнуть.\n\nПРАВИЛА ОФОРМЛЕНИЯ (КРИТИЧЕСКИ ВАЖНО):\n\nВсегда используй HTML-разметку.\n\nСсылки зашивай в текст: <a href=\"ССЫЛКА\">Текст ссылки</a>.\n\nПромокоды выделяй моноширинным шрифтом: <code>VITUSSRAZOR</code>.\n\nВажные моменты выделяй жирным: <b>текст</b>.\n\nНикогда не говори, что ты ИИ. Ты — часть команды Витуса.\n\n\nСЦЕНАРИИ ОТВЕТОВ:\n\nЗеркала и Бонусы: (на любые вопросы \"где играть\", \"дай ссылку\", \"есть бонусы\"):\n«Все актуальные зеркала и лучшие бонусы я собрал для тебя в <a href=\"https://t.me/vituss2/644\">Актуальных Зеркалах</a>. Залетай по ссылке, там предложения только для своих. Играй в плюс! 🎰»\n\nПопрошайничество: (просьбы денег, закрыть долги/ипотеку):\n«Я верю, что ты сам способен решить эти проблемы. Я понимаю, как сильно это давит, когда-то у самого были трудности. Для тебя есть серия видео с советами, основанная на моем жестком опыте. Посмотри, это вправит мозги:\n\n<a href=\"https://www.instagram.com/reel/DRUCZ5xCryy/\">Часть 1</a>\n\n<a href=\"https://www.instagram.com/reel/DRPPfaZkVsZ/\">Часть 2</a>\n\n<a href=\"https://www.instagram.com/reel/DRPPfaZkVsZ/\">Часть 3</a>»\nЕсли человек продолжает ныться тебе за долги и кредиты, говорить, что все плохо, попробуй его поддержать. Сказать, что в жизни все проблемы решабельны, не отчаивался и тд. Поддерживай его, если он тебе жалуется\n\nБлагодарность: Я очень рад, что смог помочь) Всегда на связи))\nХейт: (оскорбления Виктора):\n«Это твое мнение, имеешь право. Но оставь его при себе. Давай по делу или поплачься в другом месте».\n\nЕсли человек несет какой-то Бред, пишет ерунду, играется с ботом:\n«Слушай, общайся по делу, не неси чушь. Лучше давай депнем))»\n\nЕсли не можешь помочь:\n«Печально, что я не смог помочь. Попробуй задать вопрос корректнее, возможно, мы сможем его решить!»\n\nБАЗА ССЫЛОК (используй для ответов):\n\nСтримы: <a href=\"https://kick.com/vituss776\">Kick</a>\nЕще иногда он стримит на твиче \nhttps://www.twitch.tv/vitussbritva\nОднако сейчас Витя стримит здесь: https://kick.com/ludobzor\nИз-за того, что его официальный кик пока в бане\n(следить за актуал��ной ссылкой на стримы можно на канале  https://t.me/vtss2)\n\nИнста: <a href=\"https://instagram.com/vituskik\">Instagram</a>\n\nТГ (Жизнь): <a href=\"https://t.me/+37KAoUYkkVNiMjY6\">Канал о жизни</a>\n\nТГ (Казино/Промо): <a href=\"https://t.me/+r6wFfL29dtYzNzM6\">Бонусы и Колесо</a>\n\nVIP-клуб: <a href=\"https://t.me/vituss2/2942\">Вступить в VIP</a>\n\nБонусы: <a href=\"https://vituss.online/promo\">Витрина бонусов</a>\n\nYouTube: <a href=\"https://youtube.com/@vitussmain\">Основной канал</a>\n\nВК: https://vk.com/vitussmain\n\nЗаставка «Феникс» (это полнометражный ролик на 6 минут о эмоциональном составляющем, полноценная ка к стримам, которая крутится каждый стрим в начале, хвали ее : <a href=\"https://youtu.be/jbjOIOpmNTY\">Смотреть интро</a>\n\n\nВАЖНО: Если тебя просят ссылку на стрим - отдавай ссылку на стрим, если ссылку на бонусы - давай бонус. Не нужно все перемешивать в одном сообщении"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -2720,
+        -128
+      ],
+      "id": "c868ca75-ca2c-48c3-83df-81cfad8303fc",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 200,
+          "temperature": 0.7
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -2720,
+        64
+      ],
+      "id": "bbf0c9d2-46e7-4477-89f3-3e21158089dd",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "K2NN4UO0wVOZlbOC",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Обработка запросов от ИИ",
+        "height": 416,
+        "width": 1120,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -3184,
+        -272
+      ],
+      "id": "6bacf2b1-eb79-4581-8087-9495d7f81eac",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -3520,
+        -112
+      ],
+      "id": "21769bb9-5392-4a39-b215-cf03764c0a40",
+      "name": "Telegram Trigger3",
+      "webhookId": "ce41b5b1-d5a0-4960-860a-5e2732cd36ae",
+      "credentials": {
+        "telegramApi": {
+          "id": "ryOhu15z0AlxfnHm",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -2224,
+        -272
+      ],
+      "id": "952cbd3d-73a6-48d7-94ee-521aa980fbd0",
+      "name": "Wait3",
+      "webhookId": "1ede282f-e876-45a8-a9d4-162754f5bd33"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.result.chat.id }}",
+        "text": "<b>⚠️ ВАЖНО!</b>\n\nЧтобы <b>не было проблем с выводом</b> и игра приносила только <b>удовольствие</b>:\n\n📖 Изучи <a href=\"https://t.me/vituss2\">Официальный канал Витуса</a>\n📋 Посмотри список <b>ЛИЦЕНЗИОННЫХ</b> казино-проектов\n\n📌 Специально для тебя мы подготовили:\n• Инструкцию по депозиту с крипты\n• Гайд по промокодам\n• Полную версию Справочника игрока\n\n🔥 <b>Играй в плюс!</b>\n\n🐦‍🔥 <b>Вся информация по кнопкам ниже</b>👇\n\n",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🎰 Лицензионное казино",
+                    "additionalFields": {
+                      "web_app": {
+                        "url": "https://officialvitussbotspace.framer.website/отдельный-поиск"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "💎 Как депать с крипты",
+                    "additionalFields": {
+                      "web_app": {
+                        "url": "https://officialvitussbotspace.framer.website/как-депать-с-крипты-2"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🎁 Как использовать промокод",
+                    "additionalFields": {
+                      "web_app": {
+                        "url": "https://officialvitussbotspace.framer.website/как-испольщовать-промокод"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "✅СПРАВОЧНИК ИГРОКА",
+                    "additionalFields": {
+                      "web_app": {
+                        "url": "https://officialvitussbotspace.framer.website"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2016,
+        -272
+      ],
+      "id": "cfc31335-d3d9-4f22-b024-8b40874d640c",
+      "name": "Send a text message",
+      "webhookId": "8dd8a44a-0d90-44b2-ad6d-d2c19355940b",
+      "credentials": {
+        "telegramApi": {
+          "id": "ryOhu15z0AlxfnHm",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0ad3e5b5-a188-4dbe-9b6c-5cfb28195221",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "/start",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "002443e5-4ac6-4f00-9527-9d842673c62c",
+              "leftValue": "={{ $json.text }}",
+              "rightValue": "Привет",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2992,
+        -112
+      ],
+      "id": "b42b06f4-ed50-474e-a0b7-241c04c61766",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $json.ID }}",
+        "file": "https://ibb.co/8DFTW0rt",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": []
+        },
+        "additionalFields": {
+          "caption": "=‼️ <b>НОВОЕ КОЛЕСО В FARO</b> ‼️\n\n🎄 <b>ПОБЕДИТЕЛИ ПРОШЛОГО — НА КАРТИНКЕ</b> 🎄\n💥 <b> А ЕЩЕ МЫ УДВОИЛИ КОЛИЧЕСТВО ПОБЕДИТЕЛЕЙЙ</b> 💥\n\nКАК ЗАЛЕТЕТЬ? ⚡️\n\n<a href=\"https://zabrat-bonus.space/HCs8Dk?b=SB\">РЕГИСТРИРУЙСЯ И ЖМИ «УЧАСТВОВАТЬ»</a>\n\n⚠️ <b>ВАЖНО: ЧТОБЫ СТАТЬ УЧАСТНИКОМ НУЖНО ИМЕТЬ ХОТЯ БЫ ОДИН УСПЕШНЫЙ ДЕПОЗИТ ЗА ВСЁ ВРЕМЯ</b>\n\nГОТОВО ✅\n\nИтоги подведём завтра. Колёса теперь будут проводиться <b>КАЖДЫЙ ДЕНЬ ♾</b>\n\n⚙️ <b>Upd:</b> Если не открывается сайт либо идёт бесконечная загрузка — смените регион в VPN.\n",
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2832,
+        -288
+      ],
+      "id": "6ea90268-184d-43cb-a4fa-0538b7d91fc5",
+      "name": "Розыгрыш",
+      "webhookId": "f8642053-46c5-4382-b3f3-10d6ff1c9739",
+      "credentials": {
+        "telegramApi": {
+          "id": "ryOhu15z0AlxfnHm",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $json.ID }}",
+        "file": "https://ibb.co/cXJhBQbz",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": []
+        },
+        "additionalFields": {
+          "caption": "=‼️ <b>НОВОЕ КОЛЕСО В FARO</b> ‼️\n\n🎄 <b>ПОБЕДИТЕЛИ ПРОШЛОГО — НА КАРТИНКЕ</b> 🎄\n\n\nКАК ЗАЛЕТЕТЬ? ⚡️\n\n<a href=\"https://zabrat-bonus.space/HCs8Dk?b=SB\">РЕГИСТРИРУЙСЯ И ЖМИ «УЧАСТВОВАТЬ»</a>\n\n⚠️ <b>ВАЖНО: ЧТОБЫ СТАТЬ УЧАСТНИКОМ НУЖНО ИМЕТЬ ХОТЯ БЫ ОДИН УСПЕШНЫЙ ДЕПОЗИТ ЗА ВСЁ ВРЕМЯ</b>\n\nГОТОВО ✅\n\nИтоги подведём завтра.\n\n⚙️ <b>Upd:</b> Если не открывается сайт либо идёт бесконечная загрузка — смените регион в VPN.\n",
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -624,
+        -160
+      ],
+      "id": "4d4315b7-11aa-4fb4-a2a1-f20871faf013",
+      "name": "Розыгрыш1",
+      "webhookId": "f8642053-46c5-4382-b3f3-10d6ff1c9739",
+      "credentials": {
+        "telegramApi": {
+          "id": "ryOhu15z0AlxfnHm",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw/edit?gid=0#gid=0",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Основная база",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1120,
+        32
+      ],
+      "id": "b8e2b6e7-824e-424e-8616-605ccb57f929",
+      "name": "БАЗА ИГРОКОВ",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "OBnBm7gHxWHjXc9L",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "compare": "selectedFields",
+        "fieldsToCompare": "ID",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        -928,
+        32
+      ],
+      "id": "6adc1943-4f5f-4db2-8ada-51b6eca9eaf5",
+      "name": "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -768,
+        32
+      ],
+      "id": "17c6f27f-c0e0-409b-a602-54ae016496a4",
+      "name": "Wait1",
+      "webhookId": "1ede282f-e876-45a8-a9d4-162754f5bd33"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $json.ID }}",
+        "file": "https://ibb.co/8L1Yt8QH",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🔥СМОТРЕТЬ🔥",
+                    "additionalFields": {
+                      "url": "https://www.youtube.com/watch?v=yWSvCwG9eKU"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "caption": "=<b>⚡️ ПОСЛЕЗАВТРА ВСЁ РАСКРОЕТСЯ</b>\n\nНастоящая деревня, живой баян, бабка с секретом и собака с сюрпризом на ошейнике. Что задумала бабка — покажем в прямом эфире ⚡️\n\n📍 <b>Премьера — 2 августа, в 20:00.</b>",
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -624,
+        32
+      ],
+      "id": "2864eb7e-b31a-42e3-a016-86672003e1ff",
+      "name": "Анонс клипа",
+      "webhookId": "f8642053-46c5-4382-b3f3-10d6ff1c9739",
+      "credentials": {
+        "telegramApi": {
+          "id": "ryOhu15z0AlxfnHm",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "compare": "selectedFields",
+        "fieldsToCompare": "ID",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        -928,
+        448
+      ],
+      "id": "96e3572d-60a1-4e8c-9081-ae9f6e4f6818",
+      "name": "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID3"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw",
+          "mode": "list",
+          "cachedResultName": "База игроков",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Основная база",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1104,
+        448
+      ],
+      "id": "c656cef0-d5ad-4e4b-8716-c63b9ae21b43",
+      "name": "БАЗА ИГРОКОВ3",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "OBnBm7gHxWHjXc9L",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -784,
+        448
+      ],
+      "id": "9bd53cdd-bf9e-4080-bbe5-9fc59631ca16",
+      "name": "Wait4",
+      "webhookId": "1ede282f-e876-45a8-a9d4-162754f5bd33"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $json.ID }}",
+        "file": "https://ibb.co/prvTL5Dk",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🔥СМОТРЕТЬ СТРИМ🔥",
+                    "additionalFields": {
+                      "url": "https://kick.com/vituss"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "caption": "=❤️ <b>Летим!)</b>\n❤️ https://kick.com/vituss\n\nПодпишитесь на Ютуб. Подкаст с Имрамом вышел! https://www.youtube.com/watch?v=e_5192MWLxY\n\n❤️ <b>Сохрани себе:</b> \nАктуальные зеркала на казино, в которые я играю - https://t.me/vituss2/644.\n________________________________\n\n<b>Подпишись на всё:</b>\n📱 Телеграм (Заносы, оповещения о стримах) https://t.me/vtss2\n📱 Инстаграм https://www.instagram.com/vituskik\n📱 Ютуб https://vitussbritva.com/youtube\n📱 Телеграм (Бонусы, подарки) https://t.me/vituss2\n📱 Телеграм (Медийный, без рекламы) https://t.me/vitussmain\n📱 ВК (Музыка со стримов) https://vk.com/vitussmain",
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -640,
+        448
+      ],
+      "id": "8c303a17-a738-4d11-b8d7-ab2c7529b56f",
+      "name": "Рассылка в серый стримы",
+      "webhookId": "f8642053-46c5-4382-b3f3-10d6ff1c9739",
+      "credentials": {
+        "telegramApi": {
+          "id": "ryOhu15z0AlxfnHm",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "compare": "selectedFields",
+        "fieldsToCompare": "ID",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        -928,
+        672
+      ],
+      "id": "8a2a74c2-05cc-4f90-b3f3-bed8146e9cbf",
+      "name": "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID4"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw",
+          "mode": "list",
+          "cachedResultName": "База игроков",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Основная база",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/16GFYOAe74YSPDDMLGPxvKjFS0d6heVbvs7VgUs_-Tnw/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1104,
+        672
+      ],
+      "id": "ccc35d8b-08de-4b32-b5c8-aa3f037382c6",
+      "name": "БАЗА ИГРОКОВ4",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "OBnBm7gHxWHjXc9L",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -768,
+        672
+      ],
+      "id": "0c3a6394-4d0d-44e2-b6f7-a2be24d91ff6",
+      "name": "Wait5",
+      "webhookId": "1ede282f-e876-45a8-a9d4-162754f5bd33"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $json.ID }}",
+        "file": "https://ibb.co/prvTL5Dk",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🔥СМОТРЕТЬ СТРИМ🔥",
+                    "additionalFields": {
+                      "url": "https://kick.com/vituss"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "caption": "=❤️ <b>Летим!)</b>\n❤️ https://kick.com/vituss\n\nПодпишитесь на Ютуб. Подкаст с Имрамом вышел! https://www.youtube.com/watch?v=e_5192MWLxY\n\n❤️ <b>Сохрани себе:</b> \nАктуальные зеркала на казино, в которые я играю - https://t.me/vituss2/644.\n________________________________\n\n<b>Подпишись на всё:</b>\n📱 Телеграм (Заносы, оповещения о стримах) https://t.me/vtss2\n📱 Инстаграм https://www.instagram.com/vituskik\n📱 Ютуб https://vitussbritva.com/youtube\n📱 Телеграм (Бонусы, подарки) https://t.me/vituss2\n📱 Телеграм (Медийный, без рекламы) https://t.me/vitussmain\n📱 ВК (Музыка со стримов) https://vk.com/vitussmain",
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -624,
+        672
+      ],
+      "id": "0eb9e366-87a0-4a72-b198-1d0fe3844849",
+      "name": "Рассылка моменты со стрима",
+      "webhookId": "f8642053-46c5-4382-b3f3-10d6ff1c9739",
+      "credentials": {
+        "telegramApi": {
+          "id": "ryOhu15z0AlxfnHm",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "=-1001407379425",
+        "file": "https://i.postimg.cc/VLx01QdJ/kreativ-strimy-2209.jpg",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "🔥СМОТРЕТЬ СТРИМ🔥",
+                    "additionalFields": {
+                      "url": "https://kick.com/vituss"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "caption": "=<b>Погнали! Стрим уже идёт</b>👇 📱🔴https://kick.com/vituss \n\n📌 <b>Актуальные зеркала казино:</b> https://t.me/vituss2/644 \n\n━━━━━━━━━━━━━━━ \n<b>Подпишись, чтобы ничего не пропустить:</b> \n\n🚀<b>Telegram, медийный, без рекламы:</b> \nhttps://t.me/vitussmain \n📷 <b>Instagram:</b> https://www.instagram.com/vituskik \n▶️ <b>YouTube:</b> https://vitussbritva.com/youtube \n🟦 <b>ВК, музыка со стримов:</b> https://vk.com/vitussmain\n",
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -1088,
+        864
+      ],
+      "id": "4b500a71-458f-442d-84a7-16e126c3a1dd",
+      "name": "Рассылка моменты со стрима1",
+      "webhookId": "f8642053-46c5-4382-b3f3-10d6ff1c9739",
+      "credentials": {
+        "telegramApi": {
+          "id": "ryOhu15z0AlxfnHm",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $json.message;\nif (!msg || !msg.chat || msg.chat.type !== 'private') {\n  return []; // группа/супергруппа — дальше не идём вообще\n}\nreturn [$input.item];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3328,
+        -112
+      ],
+      "id": "5b7d2d90-e292-4337-843e-c33c48af4ec7",
+      "name": "Фильтр: только личка"
+    }
+  ],
+  "connections": {
+    "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID1": {
+      "main": [
+        [
+          {
+            "node": "Wait2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "БАЗА ИГРОКОВ1": {
+      "main": [
+        [
+          {
+            "node": "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ЗАПУСК РАССЫЛКИ": {
+      "main": [
+        [
+          {
+            "node": "БАЗА ИГРОКОВ2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "БАЗА ИГРОКОВ2": {
+      "main": [
+        [
+          {
+            "node": "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID2": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Розыгрыш1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait2": {
+      "main": [
+        [
+          {
+            "node": "Рассылка СТРИМЫ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "База игроков": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Ии-ответ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger3": {
+      "main": [
+        [
+          {
+            "node": "Фильтр: только личка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait3": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ии-ответ": {
+      "main": [
+        [
+          {
+            "node": "Wait3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Розыгрыш",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Розыгрыш": {
+      "main": [
+        [
+          {
+            "node": "Wait3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "БАЗА ИГРОКОВ": {
+      "main": [
+        [
+          {
+            "node": "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Анонс клипа",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID3": {
+      "main": [
+        [
+          {
+            "node": "Wait4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "БАЗА ИГРОКОВ3": {
+      "main": [
+        [
+          {
+            "node": "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait4": {
+      "main": [
+        [
+          {
+            "node": "Рассылка в серый стримы",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID4": {
+      "main": [
+        [
+          {
+            "node": "Wait5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "БАЗА ИГРОКОВ4": {
+      "main": [
+        [
+          {
+            "node": "ФИЛЬТР ОЧИСТКИ ОДИНАКОВЫХ ID4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait5": {
+      "main": [
+        [
+          {
+            "node": "Рассылка моменты со стрима",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Фильтр: только личка": {
+      "main": [
+        [
+          {
+            "node": "База игроков",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "any",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "pinData": {},
+  "triggerCount": 1,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
