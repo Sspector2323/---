@@ -48,7 +48,7 @@ class ClaudeCodeBrain:
             "args": [str(Path(__file__).with_name("mcp_server.py"))],
             "env": {"JARVIS_PORT": str(config.DASHBOARD_PORT), "JARVIS_TOKEN": dashboard.TOKEN,
                     "CONFIRM_DANGEROUS": "true" if config.CONFIRM_DANGEROUS else "false",
-                    "PYTHONIOENCODING": "utf-8"},
+                    "JARVIS_HOST": "claude_code", "PYTHONIOENCODING": "utf-8"},
         }}})
 
     def _allowed(self) -> list[str]:

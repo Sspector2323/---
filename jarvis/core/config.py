@@ -27,7 +27,12 @@ WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "джарвис
 TTS_VOICE = os.getenv("TTS_VOICE", "ru-RU-DmitryNeural")
 # Запасной голос Windows, если основной недоступен (на многих ПК он только женский — Irina)
 OFFLINE_VOICE = _bool("OFFLINE_VOICE", True)
-USER_NAME = os.getenv("USER_NAME", "сэр")
+USER_NAME = os.getenv("USER_NAME", "Сабина")
+if USER_NAME.strip().lower() in ("", "сэр"):  # старое значение из первых версий
+    USER_NAME = "Сабина"
+GREETING = os.getenv("GREETING", "Моё почтение, {user}. Я к вашим услугам.")
+INTRO_ANIMATION = _bool("INTRO_ANIMATION", True)  # анимация появления на всех мониторах
+MORNING_BRIEF = _bool("MORNING_BRIEF", True)      # короткая сводка дня после приветствия
 CITY = os.getenv("CITY", "Москва")
 
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "")
@@ -43,6 +48,7 @@ NOTION_HUB_PAGE = os.getenv("NOTION_HUB_PAGE", "3e84ea9860c981a7a7c5deaf8aafd8f8
 # GitHub (токен: https://github.com/settings/tokens)
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
 PROJECTS_DIR = os.getenv("PROJECTS_DIR", str(Path.home() / "Projects"))
+EDITOR = os.getenv("EDITOR", "cursor").strip().lower()  # редактор по умолчанию: cursor или vscode
 WORKSPACE_URLS = os.getenv("WORKSPACE_URLS", "https://railway.com/dashboard,https://github.com,"
                            "https://www.notion.so,https://claude.ai/code")
 

@@ -4,6 +4,7 @@ import os
 import platform
 import secrets
 import threading
+import time
 from datetime import datetime
 
 from flask import Flask, jsonify, request
@@ -46,7 +47,10 @@ SETTINGS = [
     ("OPENAI_API_KEY", "Ключ OpenAI", "secret", "sk-…"),
     ("OPENAI_MODEL", "Модель OpenAI", "select", ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o"]),
     ("ANTHROPIC_API_KEY", "Ключ Claude", "secret", "sk-ant-…"),
-    ("USER_NAME", "Как к вам обращаться", "text", "сэр"),
+    ("USER_NAME", "Как к вам обращаться", "text", "Сабина"),
+    ("GREETING", "Приветствие при запуске ({user} — имя)", "text", "Моё почтение, {user}. Я к вашим услугам."),
+    ("INTRO_ANIMATION", "Анимация появления на всех мониторах", "select", ["true", "false"]),
+    ("MORNING_BRIEF", "Сводка дня после приветствия", "select", ["true", "false"]),
     ("CITY", "Город для погоды", "text", "Москва"),
     ("WAKE_WORDS", "Слова-активаторы", "text", "джарвис,jarvis"),
     ("TTS_VOICE", "Голос", "select", ["ru-RU-DmitryNeural", "ru-RU-SvetlanaNeural"]),
@@ -59,6 +63,7 @@ SETTINGS = [
     ("NOTION_HUB_PAGE", "Notion: страница «общий штаб» (id)", "text", "id страницы"),
     ("GITHUB_TOKEN", "GitHub: токен", "secret", "github_pat_…"),
     ("PROJECTS_DIR", "Папка с проектами на компьютере", "text", "C:\\Users\\вы\\Projects"),
+    ("EDITOR", "Редактор по умолчанию", "select", ["cursor", "vscode"]),
     ("WORKSPACE_URLS", "Рабочая зона: сайты через запятую", "text", "https://railway.com/dashboard,…"),
 ]
 SECRET_KEYS = {k for k, _, kind, _ in SETTINGS if kind == "secret"}
@@ -102,6 +107,11 @@ def index():
     return _page("index.html")
 
 
+@app.get("/intro")
+def intro_page():
+    return _page("intro.html")
+
+
 @app.get("/settings")
 def settings_page():
     return _page("settings.html")
@@ -134,6 +144,8 @@ def state():
     return jsonify({
         "now": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "user": config.USER_NAME,
+        "provider": config.AI_PROVIDER,
+        "editor": config.EDITOR,
         "tasks": storage.query("SELECT * FROM tasks ORDER BY done, due IS NULL, due, id DESC LIMIT 100"),
         "reminders": storage.query("SELECT * FROM reminders WHERE fired = 0 ORDER BY at LIMIT 50"),
         "notes": storage.query("SELECT * FROM notes ORDER BY id DESC LIMIT 30"),
@@ -163,6 +175,52 @@ def work():
             out["hub"] = f"https://www.notion.so/{config.NOTION_HUB_PAGE.replace('-', '')}"
         out["notion_db"] = f"https://www.notion.so/{config.NOTION_TASKS_DB.replace('-', '')}"
     return jsonify(out)
+
+
+# Инструменты, которые можно нажимать на дашборде (клик = намерение; опасные подтверждаются в самом окне)
+UI_TOOLS = {
+    "start_workspace", "open_project", "open_url", "open_dashboard", "volume", "media_control", "screenshot",
+    "lock_computer", "sleep_computer", "shutdown_computer", "restart_computer", "cancel_shutdown", "system_status",
+    "top_processes", "check_email", "read_email", "mark_email", "add_task", "complete_task", "delete_task",
+    "add_reminder", "delete_reminder", "add_note", "forget", "remember", "notion_add_task", "notion_set_status",
+    "github_commits", "github_issues", "github_sync", "codex_task", "open_app", "play_youtube",
+}
+READ_ONLY_UI = {"read_email", "check_email", "github_commits", "github_issues", "system_status", "top_processes"}
+_cache: dict = {}
+
+
+@app.post("/api/tool")
+def run_tool():
+    from .tools import load_all
+    d = request.get_json(force=True)
+    name, args = d.get("name"), d.get("args") or {}
+    tool = load_all().get(name)
+    if name not in UI_TOOLS or not tool:
+        return jsonify(ok=False, result="Это действие с дашборда недоступно"), 400
+    try:
+        result = str(tool.func(**args))
+        if name not in READ_ONLY_UI:  # в журнал — только действия, не просмотр
+            storage.log("jarvis", f"[дашборд] {result[:200]}")
+        return jsonify(ok=True, result=result)
+    except Exception as e:  # noqa: BLE001
+        return jsonify(ok=False, result=f"{type(e).__name__}: {e}")
+
+
+@app.get("/api/weather")
+def weather_api():
+    from .tools.info import weather_data
+    if _cache.get("wt", 0) < time.time() - 600:
+        try:
+            _cache.update(w=weather_data(), wt=time.time())
+        except Exception as e:  # noqa: BLE001
+            return jsonify(error=str(e))
+    return jsonify(_cache["w"])
+
+
+@app.get("/api/integrations")
+def integrations_api():
+    from .integrations import status
+    return jsonify(status())
 
 
 @app.post("/api/notion/<task_id>/status")
@@ -213,6 +271,11 @@ def confirm():
 def start(ask_fn=None, confirm_fn=None):
     BRAIN["ask"] = ask_fn
     BRAIN["confirm"] = confirm_fn
+    # токен запуска кладём в файл — по нему MCP-сервер Джарвиса (в Cursor/Codex) спрашивает подтверждения
+    try:
+        (config.DATA_DIR / ".token").write_text(TOKEN, encoding="utf-8")
+    except OSError:
+        pass
     threading.Thread(target=lambda: app.run(host="127.0.0.1", port=config.DASHBOARD_PORT, use_reloader=False),
                      daemon=True).start()
     return f"http://localhost:{config.DASHBOARD_PORT}"

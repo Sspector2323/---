@@ -19,13 +19,12 @@ def get_datetime():
     return f"{n:%Y-%m-%d %H:%M}, {DAYS[n.weekday()]}"
 
 
-@tool("weather", "Погода сейчас и прогноз на 3 дня.", {"city": S("Город, по умолчанию город из настроек")})
-def weather(city: str | None = None):
+def weather_data(city: str | None = None) -> dict:
     city = city or config.CITY
     geo = requests.get("https://geocoding-api.open-meteo.com/v1/search",
                        params={"name": city, "count": 1, "language": "ru"}, timeout=10).json()
     if not geo.get("results"):
-        return f"Не нашёл город {city}"
+        raise RuntimeError(f"Не нашёл город {city}")
     g = geo["results"][0]
     w = requests.get("https://api.open-meteo.com/v1/forecast", timeout=10, params={
         "latitude": g["latitude"], "longitude": g["longitude"], "timezone": "auto", "forecast_days": 3,
@@ -33,11 +32,18 @@ def weather(city: str | None = None):
         "daily": "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max",
     }).json()
     c, d = w["current"], w["daily"]
-    lines = [f"{g['name']} сейчас: {c['temperature_2m']:.0f}°, ощущается {c['apparent_temperature']:.0f}°, "
-             f"{WMO.get(c['weather_code'], '')}, ветер {c['wind_speed_10m']:.0f} км/ч"]
-    for i, day in enumerate(d["time"]):
-        lines.append(f"{day}: {d['temperature_2m_min'][i]:.0f}…{d['temperature_2m_max'][i]:.0f}°, "
-                     f"{WMO.get(d['weather_code'][i], '')}, осадки {d['precipitation_probability_max'][i]}%")
+    return {"city": g["name"], "temp": round(c["temperature_2m"]), "feels": round(c["apparent_temperature"]),
+            "text": WMO.get(c["weather_code"], ""), "code": c["weather_code"], "wind": round(c["wind_speed_10m"]),
+            "days": [{"date": day, "min": round(d["temperature_2m_min"][i]), "max": round(d["temperature_2m_max"][i]),
+                      "text": WMO.get(d["weather_code"][i], ""), "code": d["weather_code"][i],
+                      "rain": d["precipitation_probability_max"][i]} for i, day in enumerate(d["time"])]}
+
+
+@tool("weather", "Погода сейчас и прогноз на 3 дня.", {"city": S("Город, по умолчанию город из настроек")})
+def weather(city: str | None = None):
+    w = weather_data(city)
+    lines = [f"{w['city']} сейчас: {w['temp']}°, ощущается {w['feels']}°, {w['text']}, ветер {w['wind']} км/ч"]
+    lines += [f"{d['date']}: {d['min']}…{d['max']}°, {d['text']}, осадки {d['rain']}%" for d in w["days"]]
     return "\n".join(lines)
 
 

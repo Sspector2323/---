@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from core import config  # noqa: E402
 from core.tools import load_all  # noqa: E402
 
 # Это Claude Code умеет и сам (файлы, терминал) — не дублируем
@@ -24,9 +25,19 @@ APPROVE = {
 }
 
 
+def _token() -> str:
+    if os.getenv("JARVIS_TOKEN"):
+        return os.environ["JARVIS_TOKEN"]
+    try:  # запущены из Cursor/Codex — токен текущего запуска Джарвиса лежит в файле
+        return (config.DATA_DIR / ".token").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def ask_user(tool_name: str, tool_input: dict) -> bool:
     """Спросить разрешение через главный процесс Джарвиса (там микрофон и голос)."""
-    if os.getenv("CONFIRM_DANGEROUS", "true").lower() not in ("1", "true", "yes", "да"):
+    if os.getenv("CONFIRM_DANGEROUS", "true" if config.CONFIRM_DANGEROUS else "false").lower() \
+            not in ("1", "true", "yes", "да"):
         return True
     import requests
     detail = tool_input.get("command") or tool_input.get("file_path") or tool_input.get("description") \
@@ -36,9 +47,9 @@ def ask_user(tool_name: str, tool_input: dict) -> bool:
     what = names.get(tool_name, TOOLS[tool_name.split("__")[-1]].description
                      if tool_name.split("__")[-1] in TOOLS else tool_name)
     try:
-        r = requests.post(f"http://127.0.0.1:{os.environ['JARVIS_PORT']}/api/confirm",
+        r = requests.post(f"http://127.0.0.1:{os.getenv('JARVIS_PORT', config.DASHBOARD_PORT)}/api/confirm",
                           json={"question": f"{what}: {detail}"},
-                          headers={"X-Jarvis-Token": os.environ["JARVIS_TOKEN"]},
+                          headers={"X-Jarvis-Token": _token()},
                           proxies={"http": None, "https": None}, timeout=60)
         return bool(r.json().get("ok"))
     except Exception:  # noqa: BLE001 — нет связи с Джарвисом — лучше отказать
@@ -54,6 +65,10 @@ def call(name: str, args: dict) -> tuple[str, bool]:
     t = TOOLS.get(name)
     if not t:
         return f"Нет инструмента {name}", True
+    # В Claude Code опасное уже подтверждено через approve; в Cursor/Codex спрашиваем сами
+    if t.dangerous and os.getenv("JARVIS_HOST") != "claude_code" and not ask_user(name, args):
+        return ("Действие не подтверждено. Подтверждение идёт голосом через Джарвиса — "
+                "он должен быть запущен."), True
     try:
         return str(t.func(**args)), False
     except Exception as e:  # noqa: BLE001

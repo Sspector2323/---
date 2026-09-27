@@ -4,168 +4,526 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>J.A.R.V.I.S.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #070b12; --panel: #0d1520; --line: #1a2a3d; --text: #d7e6f5; --muted: #6f87a1;
-    --accent: #2fd4ff; --warn: #ffb347; --ok: #4ade80; --bad: #ff5c7a;
+    --bg: #03070d; --bg2: #061020; --panel: rgba(10, 22, 38, .72); --panel-solid: #0a1626;
+    --line: rgba(56, 217, 255, .14); --line2: rgba(56, 217, 255, .28);
+    --text: #dcebf7; --muted: #7d93ab; --dim: #4b6178;
+    --accent: #38d9ff; --accent2: #0a84ff; --glow: 0 0 18px rgba(56, 217, 255, .35);
+    --ok: #4ade80; --warn: #fbbf24; --bad: #fb7185;
+    --r: 14px; --font: "Exo 2", "Segoe UI", system-ui, sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: radial-gradient(ellipse at top, #0c1a2b, var(--bg) 60%); color: var(--text);
-         font: 15px/1.45 "Segoe UI", system-ui, sans-serif; min-height: 100vh; }
-  header { display: flex; align-items: center; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
-  .core { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--accent);
-          box-shadow: 0 0 18px var(--accent), inset 0 0 12px var(--accent); animation: pulse 3s infinite; }
-  @keyframes pulse { 50% { box-shadow: 0 0 30px var(--accent), inset 0 0 20px var(--accent); } }
-  h1 { margin: 0; font-size: 20px; letter-spacing: 4px; color: var(--accent); }
-  .navlink { color: var(--accent); text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
-  .navlink:hover { border-color: var(--accent); }
-  #clock { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
-  main { display: grid; gap: 16px; padding: 16px 24px 32px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
-  section.wide { grid-column: 1 / -1; }
-  h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); }
-  ul { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow: auto; }
-  li { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: flex-start; }
-  li:last-child { border-bottom: 0; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; color: var(--text); font: 15px/1.45 "Exo 2", "Segoe UI", system-ui, sans-serif; min-height: 100vh;
+         background: radial-gradient(1200px 600px at 50% -10%, #0b2340 0%, transparent 60%),
+                     radial-gradient(900px 500px at 100% 100%, #071a2e 0%, transparent 60%), var(--bg); }
+  body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .5;
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 48px 48px; mask-image: radial-gradient(ellipse at center, #000 20%, transparent 75%); }
+  a { color: var(--accent); }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  .wrap { position: relative; max-width: 1680px; margin: 0 auto; padding: 18px 24px 40px; }
+
+  /* ---------- Шапка ---------- */
+  header.top { display: grid; grid-template-columns: auto 1fr auto auto auto; align-items: center; gap: 22px; margin-bottom: 18px; }
+  .brand { display: flex; align-items: center; gap: 16px; }
+  .reactor { width: 58px; height: 58px; border-radius: 50%; position: relative; flex: none;
+             background: radial-gradient(circle, #eaffff 0 10%, #38d9ff 22%, rgba(10,132,255,.35) 45%, transparent 62%);
+             box-shadow: 0 0 26px rgba(56,217,255,.55); animation: pulse 3.2s ease-in-out infinite; }
+  .reactor::before, .reactor::after { content: ""; position: absolute; inset: 3px; border-radius: 50%;
+             border: 2px dashed rgba(56,217,255,.8); animation: spin 14s linear infinite; }
+  .reactor::after { inset: -5px; border: 1px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent2);
+             animation-duration: 3.5s; animation-direction: reverse; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 50% { box-shadow: 0 0 44px rgba(56,217,255,.85); } }
+  .logo { font: 700 22px/1 Orbitron, sans-serif; letter-spacing: 6px; color: #eaffff; text-shadow: var(--glow); }
+  .greet { margin-top: 6px; font-weight: 300; font-size: 19px; }
+  .greet small { display: block; color: var(--muted); font-size: 13px; letter-spacing: .5px; }
+  .spacer { min-width: 0; }
+  .weather, .clock { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 16px;
+                     backdrop-filter: blur(8px); cursor: pointer; transition: border-color .2s, box-shadow .2s; }
+  .weather:hover, .clock:hover { border-color: var(--line2); box-shadow: var(--glow); }
+  .weather { display: flex; align-items: center; gap: 12px; }
+  .weather .t { font: 600 28px/1 var(--font); font-variant-numeric: tabular-nums; }
+  .weather .ic { font-size: 30px; }
+  .clock { text-align: right; }
+  .clock #time { font: 700 28px/1 Orbitron, sans-serif; letter-spacing: 2px; font-variant-numeric: tabular-nums; }
+  .clock #date { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .icon-btn { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 12px; border: 1px solid var(--line);
+              background: var(--panel); text-decoration: none; font-size: 20px; color: var(--text); transition: .2s; }
+  .icon-btn:hover { border-color: var(--accent); box-shadow: var(--glow); }
+
+  /* ---------- Команда ---------- */
+  .command { background: linear-gradient(180deg, rgba(14,34,58,.8), rgba(8,18,32,.8)); border: 1px solid var(--line2);
+             border-radius: 18px; padding: 16px; margin-bottom: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+  .cmd-row { display: flex; gap: 10px; }
+  .cmd-row input { flex: 1; min-width: 0; background: rgba(3,10,20,.8); border: 1px solid var(--line); border-radius: 12px;
+                   padding: 13px 16px; font-size: 16px; outline: none; transition: .2s; }
+  .cmd-row input:focus { border-color: var(--accent); box-shadow: var(--glow); }
+  .btn { background: rgba(56,217,255,.08); border: 1px solid var(--line2); border-radius: 12px; padding: 10px 16px;
+         cursor: pointer; transition: .15s; white-space: nowrap; }
+  .btn:hover { background: rgba(56,217,255,.16); border-color: var(--accent); box-shadow: var(--glow); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: linear-gradient(135deg, #38d9ff, #0a84ff); color: #02101e; border: 0; font-weight: 600; }
+  .btn.danger:hover { border-color: var(--bad); box-shadow: 0 0 18px rgba(251,113,133,.35); }
+  .btn.sm { padding: 5px 10px; font-size: 13px; border-radius: 9px; }
+  .mic { width: 50px; padding: 0; font-size: 20px; }
+  .mic.on { background: rgba(251,113,133,.2); border-color: var(--bad); animation: pulse 1s infinite; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip { font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent;
+          color: var(--muted); cursor: pointer; transition: .15s; }
+  .chip:hover { color: var(--text); border-color: var(--accent); }
+  .answer { margin-top: 12px; padding: 12px 14px; border-left: 3px solid var(--accent); background: rgba(56,217,255,.06);
+            border-radius: 0 10px 10px 0; white-space: pre-wrap; display: none; }
+  .answer.show { display: block; }
+  .answer.think { color: var(--muted); }
+
+  /* ---------- Быстрые действия ---------- */
+  .actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .act { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; border-radius: var(--r);
+         background: var(--panel); border: 1px solid var(--line); cursor: pointer; transition: .18s; text-align: center; font-size: 13px; }
+  .act .i { font-size: 22px; line-height: 1; }
+  .act:hover { border-color: var(--accent); box-shadow: var(--glow); transform: translateY(-2px); }
+  .act.danger:hover { border-color: var(--bad); box-shadow: 0 0 18px rgba(251,113,133,.35); }
+
+  /* ---------- Карточки ---------- */
+  .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
+  .card { grid-column: span 4; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px;
+          backdrop-filter: blur(10px); min-width: 0; position: relative; overflow: hidden; }
+  .card::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+                 background: linear-gradient(90deg, transparent, var(--accent), transparent); opacity: .5; }
+  .w3 { grid-column: span 3; } .w5 { grid-column: span 5; } .w6 { grid-column: span 6; } .w7 { grid-column: span 7; }
+  .w8 { grid-column: span 8; } .w12 { grid-column: span 12; }
+  .card h2 { margin: 0 0 12px; display: flex; align-items: center; gap: 8px; font: 500 12px/1.2 Orbitron, sans-serif;
+             letter-spacing: 2.5px; text-transform: uppercase; color: var(--accent); }
+  .card h2 .count { font-family: var(--font); letter-spacing: 0; color: var(--muted); background: rgba(56,217,255,.08);
+                    border-radius: 999px; padding: 1px 8px; font-size: 12px; }
+  .card h2 .right { margin-left: auto; font-family: var(--font); letter-spacing: 0; text-transform: none; font-size: 13px; }
+  ul.list { list-style: none; margin: 0; padding: 0; max-height: 330px; overflow: auto; }
+  ul.list li { display: flex; gap: 10px; align-items: flex-start; padding: 9px 6px; border-bottom: 1px solid var(--line);
+               border-radius: 8px; transition: background .15s; }
+  ul.list li:last-child { border-bottom: 0; }
+  ul.list li.click { cursor: pointer; }
+  ul.list li.click:hover, ul.list li:hover { background: rgba(56,217,255,.05); }
   .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .muted { color: var(--muted); font-size: 13px; }
-  .done { text-decoration: line-through; color: var(--muted); }
-  .high { color: var(--warn); }
-  button { background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
-           cursor: pointer; padding: 2px 8px; font: inherit; }
-  button:hover { color: var(--accent); border-color: var(--accent); }
-  form { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-  input, select { background: #08101a; border: 1px solid var(--line); color: var(--text); border-radius: 8px;
-                  padding: 8px 10px; font: inherit; min-width: 0; }
-  input[type=text] { flex: 1; }
-  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  .stat { text-align: center; }
-  .stat b { display: block; font-size: 26px; color: var(--accent); font-variant-numeric: tabular-nums; }
-  .bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 6px; overflow: hidden; }
-  .bar i { display: block; height: 100%; background: var(--accent); }
-  #answer { margin-top: 10px; color: var(--accent); white-space: pre-wrap; }
-  .who-user { color: var(--muted); } .who-jarvis { color: var(--accent); }
-  .repos { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
-  .repo { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
-  .repo a { color: var(--text); text-decoration: none; font-weight: 600; overflow-wrap: anywhere; }
-  .repo a:hover { color: var(--accent); }
-  .ci-success { color: var(--ok); } .ci-failure { color: var(--bad); } .ci-in_progress, .ci-queued { color: var(--warn); }
-  .pill { display: inline-block; font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin: 4px 4px 0 0; }
-  h2 a { font-size: 12px; text-transform: none; letter-spacing: 0; }
-  @media (max-width: 600px) { header, main { padding-left: 16px; padding-right: 16px; } .stats { grid-template-columns: repeat(2, 1fr); } }
+  .empty { color: var(--dim); padding: 10px 6px; font-size: 14px; }
+  .done .title { text-decoration: line-through; color: var(--dim); }
+  .x { opacity: 0; transition: opacity .15s; }
+  li:hover .x { opacity: 1; }
+  .check { width: 22px; height: 22px; border-radius: 7px; border: 1.5px solid var(--line2); display: grid; place-items: center;
+           flex: none; cursor: pointer; color: var(--ok); background: transparent; padding: 0; }
+  .check:hover { border-color: var(--ok); }
+  .prio { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .prio.high { color: var(--warn); border-color: rgba(251,191,36,.4); }
+  form.add { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  form.add input, form.add select, .field { background: rgba(3,10,20,.7); border: 1px solid var(--line); border-radius: 10px;
+                                            padding: 8px 10px; min-width: 0; outline: none; }
+  form.add input:focus, form.add select:focus { border-color: var(--accent); }
+  form.add input[type=text] { flex: 1 1 160px; }
+  select { cursor: pointer; }
+  select option { background: var(--panel-solid); }
+
+  /* Система */
+  .rings { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .ring { text-align: center; }
+  .ring svg { width: 100%; max-width: 92px; }
+  .ring .v { font: 600 17px var(--font); fill: var(--text); }
+  .ring .l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .ring .l.warn { color: var(--warn); }
+  .spark { margin-top: 12px; position: relative; }
+  .spark svg { width: 100%; height: 64px; display: block; }
+  .spark .tip { position: absolute; top: -6px; transform: translate(-50%, -100%); background: var(--panel-solid);
+                border: 1px solid var(--line2); border-radius: 8px; padding: 3px 8px; font-size: 12px; pointer-events: none; display: none; white-space: nowrap; }
+
+  /* Подключения */
+  .links { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .link { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+          text-decoration: none; color: var(--text); transition: .15s; min-width: 0; }
+  .link:hover { border-color: var(--accent); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--dim); }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .link small { display: block; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Репозитории */
+  .repos { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .repo { border: 1px solid var(--line); border-radius: 12px; padding: 12px; cursor: pointer; transition: .18s; background: rgba(3,10,20,.35); min-width: 0; }
+  .repo:hover { border-color: var(--accent); box-shadow: var(--glow); transform: translateY(-2px); }
+  .repo b { font-weight: 600; overflow-wrap: anywhere; }
+  .ci { font-size: 12.5px; margin-top: 6px; }
+  .ci.success { color: var(--ok); } .ci.failure { color: var(--bad); } .ci.in_progress, .ci.queued { color: var(--warn); }
+  .pill { display: inline-block; font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; margin: 6px 4px 0 0; color: var(--muted); }
+  .pill.claude { color: #c4b5fd; border-color: rgba(196,181,253,.35); }
+
+  /* Журнал */
+  .log { max-height: 380px; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+  .msg { max-width: 78%; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.user { align-self: flex-end; background: rgba(10,132,255,.18); border: 1px solid rgba(10,132,255,.35); border-bottom-right-radius: 4px; }
+  .msg.jarvis { align-self: flex-start; background: rgba(56,217,255,.07); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .msg time { display: block; font-size: 11px; color: var(--dim); margin-top: 3px; }
+
+  /* Модальное окно и уведомления */
+  .modal { position: fixed; inset: 0; background: rgba(1,5,10,.7); backdrop-filter: blur(6px); display: none; align-items: center;
+           justify-content: center; padding: 16px; z-index: 50; }
+  .modal.show { display: flex; }
+  .sheet { width: min(760px, 100%); max-height: 88vh; overflow: auto; background: var(--panel-solid); border: 1px solid var(--line2);
+           border-radius: 18px; padding: 20px 22px; box-shadow: 0 30px 80px rgba(0,0,0,.6), var(--glow); }
+  .sheet h3 { margin: 0 0 4px; font-weight: 500; font-size: 20px; }
+  .sheet .body { white-space: pre-wrap; margin: 14px 0; color: #c9dbeb; overflow-wrap: anywhere; }
+  .sheet .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .toast { position: fixed; right: 20px; bottom: 20px; max-width: min(420px, calc(100vw - 40px)); background: var(--panel-solid);
+           border: 1px solid var(--line2); border-radius: 12px; padding: 12px 16px; box-shadow: var(--glow); z-index: 60;
+           transform: translateY(20px); opacity: 0; transition: .25s; pointer-events: none; white-space: pre-wrap; }
+  .toast.show { transform: none; opacity: 1; }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; }
+
+  @media (max-width: 1280px) { .card, .w3, .w5 { grid-column: span 6; } .w7, .w8 { grid-column: span 12; } }
+  @media (max-width: 860px) {
+    header.top { display: flex; flex-wrap: wrap; gap: 12px; } .spacer { display: none; }
+    .brand { flex: 1 1 calc(100% - 60px); min-width: 0; } .icon-btn { flex: none; }
+    .weather { order: 3; flex: 1 1 150px; min-width: 0; } .clock { order: 4; flex: 1 1 150px; min-width: 0; }
+    .weather .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card, .w3, .w5, .w6, .w7, .w8 { grid-column: span 12; } .rings { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 520px) { .clock #time { font-size: 22px; } .weather .t { font-size: 22px; } .logo { font-size: 18px; letter-spacing: 4px; }
+    .wrap { padding: 14px 16px 30px; } .links { grid-template-columns: 1fr; } .cmd-row .btn.primary { display: none; } }
 </style>
 </head>
 <body>
-<header><div class="core"></div><h1>J.A.R.V.I.S.</h1><span id="clock"></span><a href="/settings" class="navlink">⚙ Настройки и доступы</a></header>
-<main>
-  <section class="wide">
-    <h2>Команда</h2>
-    <form id="askForm"><input type="text" id="ask" placeholder="Напишите Джарвису, например: «что у меня на завтра?»"><button>Отправить</button></form>
-    <div id="answer"></div>
-  </section>
-  <section class="wide">
-    <h2>Текущая работа · GitHub</h2>
-    <div id="gh" class="muted">Загружаю…</div>
-  </section>
-  <section>
-    <h2>Claude в облаке · его ветки и PR</h2>
-    <ul id="cloud"><li class="muted">Загружаю…</li></ul>
-  </section>
-  <section>
-    <h2>Notion · Сводка задач <a id="nlink" class="muted" target="_blank"></a></h2>
-    <ul id="notion"><li class="muted">Загружаю…</li></ul>
-  </section>
-  <section><h2>Система</h2><div class="stats" id="sys"></div></section>
-  <section>
-    <h2>Задачи</h2><ul id="tasks"></ul>
-    <form id="taskForm">
-      <input type="text" id="taskTitle" placeholder="Новая задача">
-      <select id="taskPrio"><option>обычный</option><option>высокий</option><option>низкий</option></select>
-      <button>+</button>
-    </form>
-  </section>
-  <section><h2>Напоминания</h2><ul id="reminders"></ul></section>
-  <section><h2>Почта (последняя проверка)</h2><ul id="mail"></ul></section>
-  <section><h2>Заметки</h2><ul id="notes"></ul></section>
-  <section><h2>Что я о вас помню</h2><ul id="memory"></ul></section>
-  <section class="wide"><h2>Журнал разговора</h2><ul id="log"></ul></section>
-</main>
-<script>
-const $ = id => document.getElementById(id);
-const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const api = (url, opts = {}) => fetch(url, {headers: {"Content-Type": "application/json", "X-Jarvis-Token": "__TOKEN__"}, ...opts}).then(r => r.json());
-const list = (el, rows, fn, empty) => { $(el).innerHTML = rows.length ? rows.map(fn).join("") : `<li class="muted">${empty}</li>`; };
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="reactor" title="Джарвис на связи"></div>
+      <div>
+        <div class="logo">J.A.R.V.I.S.</div>
+        <div class="greet" id="greet">Моё почтение<small id="subgreet">Я к вашим услугам</small></div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="weather" id="weather" title="Обновить погоду"><span class="ic">⛅</span><div><div class="t">—</div><div class="muted">погода</div></div></div>
+    <div class="clock" id="clockBox" title="Сводка дня"><div id="time">--:--</div><div id="date"></div></div>
+    <a class="icon-btn" href="/settings" title="Настройки и доступы">⚙</a>
+  </header>
 
-async function refresh() {
-  const s = await api("/api/state");
-  $("clock").textContent = s.now;
-  const sys = s.system || {};
-  $("sys").innerHTML = [["CPU", sys.cpu], ["RAM", sys.ram], ["Диск", sys.disk], ["Батарея", sys.battery]]
-    .map(([k, v]) => `<div class="stat"><b>${v == null ? "—" : Math.round(v) + "%"}</b><span class="muted">${k}</span>
-      <div class="bar"><i style="width:${v || 0}%"></i></div></div>`).join("");
-  list("tasks", s.tasks, t => `<li><button onclick="toggle(${t.id})">${t.done ? "✓" : "○"}</button>
-    <span class="grow ${t.done ? "done" : ""} ${t.priority === "высокий" ? "high" : ""}">${esc(t.title)}
-    ${t.due ? `<div class="muted">до ${esc(t.due)}</div>` : ""}</span><button onclick="delTask(${t.id})">✕</button></li>`, "Задач нет");
-  list("reminders", s.reminders, r => `<li><span class="grow">${esc(r.text)}<div class="muted">${esc(r.at)}</div></span>
-    <button onclick="delRem(${r.id})">✕</button></li>`, "Напоминаний нет");
-  list("mail", s.mail, m => `<li><span class="grow"><b>${esc(m.subject)}</b><div class="muted">${esc(m.sender)}</div>
-    <div class="muted">${esc(m.snippet).slice(0, 160)}</div></span></li>`, "Скажите «Джарвис, проверь почту»");
-  list("notes", s.notes, n => `<li><span class="grow">${esc(n.text)}<div class="muted">${esc(n.created)}</div></span></li>`, "Заметок нет");
-  list("memory", s.memory, m => `<li><span class="grow"><b>${esc(m.key)}:</b> ${esc(m.value)}</span></li>`, "Пока ничего");
-  list("log", s.log, l => `<li><span class="muted">${esc(l.ts.slice(11))}</span>
-    <span class="grow who-${l.who}">${l.who === "user" ? "Вы" : "Джарвис"}: ${esc(l.text)}</span></li>`, "Пусто");
+  <section class="command">
+    <form class="cmd-row" id="askForm">
+      <button type="button" class="btn mic" id="mic" title="Сказать голосом">🎙</button>
+      <input id="ask" autocomplete="off" placeholder="Что сделать, Сабина? Например: «что у меня в работе?»">
+      <button class="btn primary">Отправить</button>
+    </form>
+    <div class="chips" id="chips"></div>
+    <div class="answer" id="answer"></div>
+  </section>
+
+  <section class="actions" id="actions"></section>
+
+  <main class="grid">
+    <section class="card w5">
+      <h2>Система <span class="right muted" id="uptime"></span></h2>
+      <div class="rings" id="rings"></div>
+      <div class="spark" id="spark"><svg viewBox="0 0 300 64" preserveAspectRatio="none"></svg><div class="tip"></div>
+        <div class="muted">Загрузка процессора, последние 5 минут</div></div>
+    </section>
+    <section class="card w3"><h2>Подключения</h2><div class="links" id="links"></div></section>
+    <section class="card"><h2>Сегодня <span class="count" id="tcount">0</span></h2><ul class="list" id="tasks"></ul>
+      <form class="add" id="taskForm"><input type="text" id="taskTitle" placeholder="Новое дело">
+        <select id="taskPrio"><option>обычный</option><option>высокий</option><option>низкий</option></select>
+        <button class="btn sm">+</button></form></section>
+
+    <section class="card w8"><h2>Проекты · GitHub <span class="count" id="rcount">0</span>
+      <span class="right"><button class="btn sm" onclick="syncRepos()">⬇ Скачать / обновить все</button></span></h2>
+      <div class="repos" id="repos"><div class="empty">Загружаю…</div></div></section>
+    <section class="card"><h2>Claude в облаке</h2><ul class="list" id="cloud"><li class="empty">Загружаю…</li></ul></section>
+
+    <section class="card w6"><h2>Notion · Сводка задач <span class="count" id="ncount">0</span><a class="right" id="nlink" target="_blank"></a></h2>
+      <ul class="list" id="notion"><li class="empty">Загружаю…</li></ul>
+      <form class="add" id="notionForm"><input type="text" id="nTitle" placeholder="Новая задача в Notion">
+        <select id="nPrio"><option value="High">High</option><option value="Medium" selected>Medium</option><option value="Low">Low</option></select>
+        <button class="btn sm">+ в Notion</button></form></section>
+    <section class="card w6"><h2>Почта <span class="count" id="mcount">0</span><span class="right"><button class="btn sm" onclick="checkMail()">↻ Проверить</button></span></h2>
+      <ul class="list" id="mail"></ul></section>
+
+    <section class="card"><h2>Напоминания</h2><ul class="list" id="reminders"></ul>
+      <form class="add" id="remForm"><input type="text" id="remText" placeholder="О чём напомнить">
+        <input type="datetime-local" id="remAt"><button class="btn sm">+</button></form></section>
+    <section class="card"><h2>Заметки</h2><ul class="list" id="notes"></ul>
+      <form class="add" id="noteForm"><input type="text" id="noteText" placeholder="Записать мысль"><button class="btn sm">+</button></form></section>
+    <section class="card"><h2>Джарвис помнит</h2><ul class="list" id="memory"></ul>
+      <form class="add" id="memForm"><input type="text" id="memKey" placeholder="О чём" style="flex:1 1 90px">
+        <input type="text" id="memVal" placeholder="Что запомнить"><button class="btn sm">+</button></form></section>
+
+    <section class="card w12"><h2>Журнал разговора</h2><div class="log" id="log"></div></section>
+  </main>
+</div>
+
+<div class="modal" id="modal" onclick="if (event.target === this) closeModal()"><div class="sheet" id="sheet"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const api = (url, opts = {}) => fetch(url, {headers: {"Content-Type": "application/json", "X-Jarvis-Token": TOKEN}, ...opts}).then(r => r.json());
+const post = (url, body) => api(url, {method: "POST", body: JSON.stringify(body || {})});
+let STATE = {}, WORK = {}, USER = "Сабина";
+
+function toast(text, ms = 3500) { const t = $("toast"); t.textContent = text; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), ms); }
+function openModal(html) { $("sheet").innerHTML = html; $("modal").classList.add("show"); }
+function closeModal() { $("modal").classList.remove("show"); }
+addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
+async function tool(name, args = {}, confirmText = null) {
+  if (confirmText && !confirm(confirmText)) return null;
+  const r = await post("/api/tool", {name, args});
+  toast(r.result || "Готово"); refresh(); return r;
 }
-const CI = {success: "✓ проверки прошли", failure: "✗ проверки упали", in_progress: "… проверки идут", queued: "… в очереди"};
+async function ask(text) {
+  if (!text) return;
+  const a = $("answer"); a.className = "answer show think"; a.textContent = "Джарвис думает…";
+  try { const r = await post("/api/ask", {text}); a.className = "answer show"; a.textContent = r.answer; }
+  catch { a.className = "answer show"; a.textContent = "Нет связи с Джарвисом"; }
+  refresh(); refreshWork();
+}
+
+// ---------- Шапка ----------
+const DAYS = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
+function tickClock() {
+  const n = new Date();
+  $("time").textContent = n.toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"});
+  $("date").textContent = `${DAYS[n.getDay()]}, ${n.toLocaleDateString("ru-RU", {day: "numeric", month: "long"})}`;
+  const h = n.getHours(), part = h < 5 ? "Доброй ночи" : h < 12 ? "Доброе утро" : h < 18 ? "Добрый день" : "Добрый вечер";
+  $("greet").innerHTML = `Моё почтение, ${esc(USER)}<small>${part}. Я к вашим услугам.</small>`;
+}
+const WICON = c => c === 0 ? "☀️" : c <= 2 ? "🌤" : c === 3 ? "☁️" : c <= 48 ? "🌫" : c <= 67 ? "🌧" : c <= 77 ? "🌨" : c <= 82 ? "🌦" : c <= 86 ? "❄️" : "⛈";
+async function loadWeather() {
+  const w = await api("/api/weather");
+  if (w.error) { $("weather").innerHTML = `<span class="ic">⛅</span><div><div class="t">—</div><div class="muted">нет данных</div></div>`; return; }
+  $("weather").innerHTML = `<span class="ic">${WICON(w.code)}</span><div><div class="t">${w.temp}°</div><div class="muted">${esc(w.city)} · ${esc(w.text)}</div></div>`;
+  $("weather").onclick = () => openModal(`<h3>${WICON(w.code)} ${esc(w.city)}: ${w.temp}°</h3>
+    <div class="muted">ощущается как ${w.feels}° · ${esc(w.text)} · ветер ${w.wind} км/ч</div>
+    <ul class="list" style="margin-top:14px">${w.days.map(d => `<li><span style="font-size:22px">${WICON(d.code)}</span>
+      <span class="grow"><b>${new Date(d.date).toLocaleDateString("ru-RU", {weekday: "long", day: "numeric", month: "long"})}</b>
+      <div class="muted">${esc(d.text)} · осадки ${d.rain}%</div></span><b>${d.min}…${d.max}°</b></li>`).join("")}</ul>
+    <div class="row"><button class="btn" onclick="closeModal()">Закрыть</button></div>`);
+}
+$("clockBox").onclick = () => ask("Сводка дня: что у меня сегодня по делам, проектам, почте и погоде?");
+
+// ---------- Подсказки и быстрые действия ----------
+const CHIPS = ["Что у меня в работе?", "Проверь почту", "Как дела в репозиториях?", "Над чем работает Claude?",
+               "Распланируй мне день", "Какая погода завтра?", "Запиши в штаб итоги дня"];
+$("chips").innerHTML = CHIPS.map(c => `<button class="chip">${esc(c)}</button>`).join("");
+$("chips").onclick = e => { if (e.target.classList.contains("chip")) ask(e.target.textContent); };
+
+const ACTIONS = [
+  ["🚀", "Рабочая зона", () => tool("start_workspace")],
+  ["☀️", "Сводка дня", () => ask("Сводка дня: что у меня сегодня по делам, проектам, почте и погоде?")],
+  ["📬", "Почта", () => checkMail()],
+  ["🗂", "Что в работе", () => ask("Что у меня в работе в Notion?")],
+  ["📸", "Скриншот", () => tool("screenshot")],
+  ["🔉", "Тише", () => tool("volume", {action: "down"})],
+  ["🔊", "Громче", () => tool("volume", {action: "up"})],
+  ["⏯", "Пауза / играть", () => tool("media_control", {action: "play_pause"})],
+  ["⏭", "Следующий трек", () => tool("media_control", {action: "next"})],
+  ["🔒", "Заблокировать", () => tool("lock_computer")],
+  ["🌙", "Сон", () => tool("sleep_computer", {}, "Перевести компьютер в спящий режим?"), "danger"],
+  ["↻", "Перезагрузка", () => tool("restart_computer", {delay_seconds: 30}, "Перезагрузить компьютер через 30 секунд?"), "danger"],
+  ["⏻", "Выключить ПК", () => tool("shutdown_computer", {delay_seconds: 60}, "Выключить компьютер через минуту? (отменить: кнопка «Отменить выкл.»)"), "danger"],
+  ["✋", "Отменить выкл.", () => tool("cancel_shutdown")],
+];
+$("actions").innerHTML = ACTIONS.map(([i, l, , cls], k) => `<button class="act ${cls || ""}" data-k="${k}"><span class="i">${i}</span>${l}</button>`).join("");
+$("actions").onclick = e => { const b = e.target.closest(".act"); if (b) ACTIONS[b.dataset.k][2](); };
+
+// ---------- Голос из браузера ----------
+(() => {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition, mic = $("mic");
+  if (!SR) { mic.title = "Браузер не поддерживает распознавание речи"; mic.disabled = true; mic.style.opacity = .4; return; }
+  const rec = new SR(); rec.lang = "ru-RU"; rec.interimResults = true;
+  rec.onresult = e => { const r = e.results[e.results.length - 1]; $("ask").value = r[0].transcript; if (r.isFinal) { ask(r[0].transcript); $("ask").value = ""; } };
+  rec.onend = () => mic.classList.remove("on");
+  mic.onclick = () => { if (mic.classList.contains("on")) rec.stop(); else { mic.classList.add("on"); rec.start(); } };
+})();
+$("askForm").onsubmit = e => { e.preventDefault(); const v = $("ask").value.trim(); $("ask").value = ""; ask(v); };
+
+// ---------- Система ----------
+const CPU = [];
+function ring(label, v) {
+  const val = v == null ? null : Math.round(v), R = 34, C = 2 * Math.PI * R, warn = val != null && val >= 85 && label !== "Батарея";
+  const low = label === "Батарея" && val != null && val <= 20, col = warn || low ? "var(--warn)" : "var(--accent)";
+  return `<div class="ring"><svg viewBox="0 0 84 84">
+    <circle cx="42" cy="42" r="${R}" fill="none" stroke="rgba(56,217,255,.12)" stroke-width="6"/>
+    <circle cx="42" cy="42" r="${R}" fill="none" stroke="${col}" stroke-width="6" stroke-linecap="round"
+      stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - (val || 0) / 100)}" transform="rotate(-90 42 42)"
+      style="transition: stroke-dashoffset .8s ease; filter: drop-shadow(0 0 4px ${col})"/>
+    <text x="42" y="47" text-anchor="middle" class="v">${val == null ? "—" : val + "%"}</text></svg>
+    <div class="l ${warn || low ? "warn" : ""}">${warn || low ? "⚠ " : ""}${label}</div></div>`;
+}
+function spark() {
+  const svg = $("spark").querySelector("svg"), n = CPU.length;
+  if (n < 2) { svg.innerHTML = ""; return; }
+  const x = i => i / (60 - 1) * 300, y = v => 60 - v / 100 * 56;
+  const pts = CPU.map((v, i) => `${x(i + 60 - n)},${y(v)}`).join(" ");
+  svg.innerHTML = `<defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#38d9ff" stop-opacity=".35"/><stop offset="1" stop-color="#38d9ff" stop-opacity="0"/></linearGradient></defs>
+    <line x1="0" y1="60" x2="300" y2="60" stroke="rgba(56,217,255,.15)"/>
+    <polygon points="${x(60 - n)},60 ${pts} 300,60" fill="url(#sg)"/>
+    <polyline points="${pts}" fill="none" stroke="#38d9ff" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>`;
+}
+$("spark").onmousemove = e => {
+  const box = $("spark").querySelector("svg").getBoundingClientRect(), n = CPU.length, tip = $("spark").querySelector(".tip");
+  if (!n) return;
+  const i = Math.round((e.clientX - box.left) / box.width * 59) - (60 - n);
+  if (i < 0 || i >= n) { tip.style.display = "none"; return; }
+  tip.style.display = "block"; tip.style.left = (e.clientX - box.left) + "px";
+  tip.textContent = `${Math.round(CPU[i])}% · ${Math.round((n - 1 - i) * 5)} с назад`;
+};
+$("spark").onmouseleave = () => $("spark").querySelector(".tip").style.display = "none";
+
+// ---------- Данные ----------
+const empty = (el, text) => $(el).innerHTML = `<li class="empty">${text}</li>`;
+async function refresh() {
+  const s = await api("/api/state"); STATE = s; USER = s.user || USER; tickClock();
+  const sys = s.system || {};
+  if (sys.cpu != null) { CPU.push(sys.cpu); if (CPU.length > 60) CPU.shift(); }
+  $("rings").innerHTML = ring("Процессор", sys.cpu) + ring("Память", sys.ram) + ring("Диск", sys.disk) + ring("Батарея", sys.battery);
+  spark();
+
+  const tasks = s.tasks || [], open = tasks.filter(t => !t.done);
+  $("tcount").textContent = open.length;
+  tasks.length ? $("tasks").innerHTML = tasks.map(t => `<li class="${t.done ? "done" : ""}">
+      <button class="check" title="${t.done ? "Вернуть" : "Готово"}" onclick="toggleTask(${t.id})">${t.done ? "✓" : ""}</button>
+      <span class="grow"><span class="title">${esc(t.title)}</span>
+      <div class="muted">${t.due ? "до " + esc(t.due) + " · " : ""}<span class="prio ${t.priority === "высокий" ? "high" : ""}">${esc(t.priority)}</span></div></span>
+      <button class="btn sm x" title="Удалить" onclick="tool('delete_task', {task_id: ${t.id}})">✕</button></li>`).join("")
+    : empty("tasks", "Дел нет — можно выдохнуть");
+
+  (s.reminders || []).length ? $("reminders").innerHTML = s.reminders.map(r => `<li><span style="font-size:18px">⏰</span>
+      <span class="grow">${esc(r.text)}<div class="muted">${esc(r.at)}</div></span>
+      <button class="btn sm x" onclick="tool('delete_reminder', {reminder_id: ${r.id}})">✕</button></li>`).join("")
+    : empty("reminders", "Напоминаний нет");
+
+  (s.notes || []).length ? $("notes").innerHTML = s.notes.map((n, i) => `<li class="click" onclick="openNote(${i})">
+      <span class="grow">${esc(n.text)}<div class="muted">${esc(n.created)}</div></span></li>`).join("")
+    : empty("notes", "Заметок нет");
+
+  (s.memory || []).length ? $("memory").innerHTML = s.memory.map((m, i) => `<li><span class="grow"><b>${esc(m.key)}:</b> ${esc(m.value)}</span>
+      <button class="btn sm x" title="Забыть" onclick="forgetMem(${i})">✕</button></li>`).join("")
+    : empty("memory", "Пока ничего. Скажите: «Джарвис, запомни…»");
+
+  const mail = s.mail || [];
+  $("mcount").textContent = mail.length;
+  mail.length ? $("mail").innerHTML = mail.map(m => `<li class="click" onclick="readMail('${esc(m.uid)}')"><span style="font-size:18px">✉️</span>
+      <span class="grow"><b>${esc(m.subject)}</b><div class="muted">${esc(m.sender)}</div><div class="muted">${esc(m.snippet).slice(0, 140)}</div></span></li>`).join("")
+    : empty("mail", "Нажмите «Проверить» — или скажите «Джарвис, проверь почту»");
+
+  const log = (s.log || []).slice().reverse();
+  const box = $("log"), atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  box.innerHTML = log.length ? log.map(l => `<div class="msg ${l.who === "user" ? "user" : "jarvis"}">${esc(l.text)}<time>${esc(l.ts.slice(11))}</time></div>`).join("")
+                             : `<div class="empty">Разговор ещё не начинался</div>`;
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+const CI = {success: "✓ проверки прошли", failure: "✗ проверки упали", in_progress: "… проверки идут", queued: "… в очереди", cancelled: "отменено"};
 async function refreshWork() {
-  const w = await api("/api/work");
-  const hint = (what, where) => `<span class="muted">${what} не подключён — ⚙ <a href="/settings">Настройки</a> → ${where}</span>`;
+  const w = await api("/api/work"); WORK = w;
+  const hint = (what, where) => `<div class="empty">${what} не подключён — <a href="/settings">⚙ Настройки</a> → ${where}</div>`;
   if (w.github) {
-    $("gh").innerHTML = `<div class="repos">${w.github.map(r => `<div class="repo">
-      <a href="${esc(r.url)}" target="_blank">${esc(r.name.split("/")[1])}</a>${r.private ? ' <span class="muted">🔒</span>' : ""}
+    $("rcount").textContent = w.github.length;
+    $("repos").innerHTML = w.github.map((r, i) => `<div class="repo" onclick="openRepo(${i})">
+      <b>${esc(r.name.split("/")[1])}</b>${r.private ? ' <span class="muted">🔒</span>' : ""}
       <div class="muted">обновлён ${esc(r.pushed)}</div>
-      ${r.ci ? `<div class="ci-${esc(r.ci)}">${CI[r.ci] || esc(r.ci)}</div>` : ""}
-      ${r.prs.map(p => `<a class="pill" href="${esc(p.url)}" target="_blank">PR #${p.n} ${esc(p.title).slice(0, 40)}</a>`).join("")}
-    </div>`).join("")}</div>`;
-    const cloud = w.github.flatMap(r => r.claude.map(b => ({repo: r.name.split("/")[1], branch: b,
-      pr: r.prs.find(p => p.branch === b), url: `${r.url}/tree/${b}`})));
-    list("cloud", cloud, c => `<li><span class="grow"><b>${esc(c.repo)}</b> · <a href="${esc(c.url)}" target="_blank" class="muted">${esc(c.branch)}</a>
-      ${c.pr ? `<div><a class="pill" href="${esc(c.pr.url)}" target="_blank">PR #${c.pr.n} ${esc(c.pr.title)}</a></div>` : ""}</span></li>`,
-      "Сейчас Claude в облаке ничего не ведёт");
+      ${r.ci ? `<div class="ci ${esc(r.ci)}">${CI[r.ci] || esc(r.ci)}</div>` : ""}
+      ${r.prs.length ? `<span class="pill">PR: ${r.prs.length}</span>` : ""}${r.claude.length ? `<span class="pill claude">Claude: ${r.claude.length}</span>` : ""}
+    </div>`).join("");
+    const cloud = w.github.flatMap(r => r.claude.map(b => ({repo: r.name.split("/")[1], branch: b, pr: r.prs.find(p => p.branch === b), url: `${r.url}/tree/${b}`})));
+    cloud.length ? $("cloud").innerHTML = cloud.map(c => `<li class="click" onclick="window.open('${esc(c.pr ? c.pr.url : c.url)}')"><span style="font-size:18px">🤖</span>
+        <span class="grow"><b>${esc(c.repo)}</b><div class="muted">${esc(c.branch)}</div>
+        ${c.pr ? `<span class="pill claude">PR #${c.pr.n} ${esc(c.pr.title)}</span>` : ""}</span></li>`).join("")
+      : empty("cloud", "Сейчас Claude в облаке ничего не ведёт");
   } else {
-    $("gh").innerHTML = w.errors.github ? `<span class="muted">GitHub: ${esc(w.errors.github)}</span>` : hint("GitHub", "GitHub: токен");
+    $("repos").innerHTML = w.errors.github ? `<div class="empty">GitHub: ${esc(w.errors.github)}</div>` : hint("GitHub", "GitHub: токен");
     $("cloud").innerHTML = `<li>${hint("GitHub", "GitHub: токен")}</li>`;
   }
   if (w.notion) {
     $("nlink").href = w.notion_db; $("nlink").textContent = "открыть ↗";
+    $("ncount").textContent = w.notion.length;
     const opts = ["Не начато", "В работе", "Готово"];
-    list("notion", w.notion, t => `<li><span class="grow"><a href="${esc(t.url)}" target="_blank" style="color:inherit;text-decoration:none">${esc(t.title)}</a>
-      <div class="muted">${esc(t.priority || "")} · изменено ${esc(t.edited)}</div></span>
-      <select onchange="setNotion('${t.id}', this.value)">${opts.map(o => `<option ${o === t.status ? "selected" : ""}>${o}</option>`).join("")}</select></li>`,
-      "Все задачи в Notion выполнены");
+    w.notion.length ? $("notion").innerHTML = w.notion.map(t => `<li><span class="grow"><a href="${esc(t.url)}" target="_blank" style="color:inherit;text-decoration:none">${esc(t.title)}</a>
+        <div class="muted"><span class="prio ${t.priority === "High" ? "high" : ""}">${esc(t.priority || "—")}</span> изменено ${esc(t.edited)}</div></span>
+        <select class="field" onchange="setNotion('${t.id}', this.value)">${opts.map(o => `<option ${o === t.status ? "selected" : ""}>${o}</option>`).join("")}</select></li>`).join("")
+      : empty("notion", "Всё в Notion выполнено");
   } else {
-    $("notion").innerHTML = `<li>${w.errors.notion ? `<span class="muted">Notion: ${esc(w.errors.notion)}</span>` : hint("Notion", "Notion: секрет")}</li>`;
+    $("notion").innerHTML = `<li>${w.errors.notion ? `<span class="empty">Notion: ${esc(w.errors.notion)}</span>` : hint("Notion", "Notion: секрет")}</li>`;
   }
 }
-async function setNotion(id, status) { await api(`/api/notion/${id}/status`, {method: "POST", body: JSON.stringify({status})}); refreshWork(); }
-async function toggle(id) { await api(`/api/tasks/${id}/toggle`, {method: "POST"}); refresh(); }
-async function delTask(id) { await api(`/api/tasks/${id}`, {method: "DELETE"}); refresh(); }
-async function delRem(id) { await api(`/api/reminders/${id}`, {method: "DELETE"}); refresh(); }
-$("taskForm").onsubmit = async e => {
-  e.preventDefault();
-  if (!$("taskTitle").value.trim()) return;
-  await api("/api/tasks", {method: "POST", body: JSON.stringify({title: $("taskTitle").value, priority: $("taskPrio").value})});
-  $("taskTitle").value = ""; refresh();
-};
-$("askForm").onsubmit = async e => {
-  e.preventDefault();
-  const text = $("ask").value.trim(); if (!text) return;
-  $("answer").textContent = "Думаю…"; $("ask").value = "";
-  try { $("answer").textContent = (await api("/api/ask", {method: "POST", body: JSON.stringify({text})})).answer; }
-  catch { $("answer").textContent = "Ошибка связи"; }
-  refresh();
-};
+async function refreshLinks() {
+  const l = await api("/api/integrations");
+  $("links").innerHTML = l.map(i => `<a class="link" href="${esc(i.url)}" ${i.url.startsWith("http") ? 'target="_blank"' : ""}>
+    <span class="dot ${i.ok ? "ok" : ""}"></span><span style="min-width:0"><b>${esc(i.name)}</b><small>${esc(i.note)}</small></span></a>`).join("");
+}
+
+// ---------- Клики ----------
+function openNote(i) { const n = STATE.notes[i]; openModal(`<h3>📝 Заметка</h3><div class="muted">${esc(n.created)}</div>
+  <div class="body">${esc(n.text)}</div><div class="row"><button class="btn" onclick="ask('Разверни заметку в план действий: ' + STATE.notes[${i}].text); closeModal()">Превратить в план</button>
+  <button class="btn" onclick="closeModal()">Закрыть</button></div>`); }
+function forgetMem(i) { tool("forget", {key: STATE.memory[i].key}, `Забыть «${STATE.memory[i].key}»?`); }
+async function toggleTask(id) { await post(`/api/tasks/${id}/toggle`); refresh(); }
+async function setNotion(id, status) { await post(`/api/notion/${id}/status`, {status}); toast(`Notion: ${status}`); refreshWork(); }
+async function checkMail() { toast("Проверяю почту…"); const r = await post("/api/tool", {name: "check_email", args: {limit: 15}}); toast(r.ok ? "Почта проверена" : r.result); refresh(); }
+async function syncRepos() { if (!confirm("Скачать все репозитории на компьютер и обновить уже скачанные?")) return; toast("Синхронизирую репозитории…", 8000); await tool("github_sync"); }
+
+async function readMail(uid) {
+  openModal(`<h3>Письмо</h3><div class="body muted">Открываю…</div>`);
+  const r = await post("/api/tool", {name: "read_email", args: {uid}});
+  openModal(`<h3>✉️ Письмо</h3><div class="body">${esc(r.result)}</div>
+    <div class="row"><button class="btn primary" onclick="replyMail('${esc(uid)}')">Ответить</button>
+    <button class="btn" onclick="ask('Кратко перескажи письмо uid ${esc(uid)} и скажи, что от меня требуется'); closeModal()">Пересказать</button>
+    <button class="btn" onclick="ask('Сделай задачу из письма uid ${esc(uid)}'); closeModal()">В задачи</button>
+    <button class="btn danger" onclick="tool('mark_email', {uid: '${esc(uid)}', action: 'delete'}, 'Удалить письмо?').then(closeModal)">Удалить</button>
+    <button class="btn" onclick="closeModal()">Закрыть</button></div>`);
+}
+function replyMail(uid) { const t = prompt("Что ответить? Джарвис оформит и покажет перед отправкой"); if (t) { closeModal(); ask(`Ответь на письмо uid ${uid}: ${t}`); } }
+
+async function openRepo(i) {
+  const r = WORK.github[i], short = r.name.split("/")[1];
+  openModal(`<h3>${esc(short)} ${r.private ? "🔒" : ""}</h3><div class="muted">${esc(r.name)} · обновлён ${esc(r.pushed)} · ветка ${esc(r.branch)}</div>
+    ${r.ci ? `<div class="ci ${esc(r.ci)}">${CI[r.ci] || esc(r.ci)}</div>` : ""}
+    <div class="row">
+      <button class="btn primary" onclick="tool('open_project', {name: '${esc(short)}', editor: 'cursor'})">Открыть в Cursor</button>
+      <button class="btn" onclick="tool('open_project', {name: '${esc(short)}', editor: 'vscode'})">VS Code</button>
+      <button class="btn" onclick="window.open('${esc(r.url)}')">GitHub ↗</button>
+      <button class="btn" onclick="codexTask('${esc(short)}')">Поручить Codex…</button>
+      <button class="btn" onclick="claudeTask('${esc(short)}')">Поручить Claude…</button>
+    </div>
+    ${r.prs.length ? `<h3 style="margin-top:18px;font-size:16px">Открытые PR</h3><ul class="list">${r.prs.map(p => `<li class="click" onclick="window.open('${esc(p.url)}')">
+      <span class="grow">#${p.n} ${esc(p.title)}<div class="muted">${esc(p.branch)}</div></span></li>`).join("")}</ul>` : ""}
+    <h3 style="margin-top:18px;font-size:16px">Последние коммиты</h3><div class="body muted" id="commits">Загружаю…</div>
+    <div class="row"><button class="btn" onclick="closeModal()">Закрыть</button></div>`);
+  const c = await post("/api/tool", {name: "github_commits", args: {repo: r.name}});
+  if ($("commits")) $("commits").textContent = c.result;
+}
+function codexTask(project) { const t = prompt(`Что поручить Codex в проекте ${project}?`); if (t) { closeModal(); toast("Codex работает — это может занять несколько минут", 8000); tool("codex_task", {task: t, project}, `Codex выполнит в ${project}:\n«${t}»\nЗапустить?`); } }
+function claudeTask(project) { const t = prompt(`Что поручить Claude в проекте ${project}?`); if (t) { closeModal(); ask(`В проекте ${project}: ${t}`); } }
+
+// ---------- Формы ----------
+$("taskForm").onsubmit = async e => { e.preventDefault(); const v = $("taskTitle").value.trim(); if (!v) return;
+  await post("/api/tasks", {title: v, priority: $("taskPrio").value}); $("taskTitle").value = ""; refresh(); };
+$("notionForm").onsubmit = async e => { e.preventDefault(); const v = $("nTitle").value.trim(); if (!v) return;
+  await tool("notion_add_task", {title: v, priority: $("nPrio").value}); $("nTitle").value = ""; refreshWork(); };
+$("remForm").onsubmit = async e => { e.preventDefault(); const v = $("remText").value.trim(), at = $("remAt").value; if (!v || !at) return toast("Укажите текст и время");
+  await tool("add_reminder", {text: v, at: at.replace("T", " ")}); $("remText").value = ""; };
+$("noteForm").onsubmit = async e => { e.preventDefault(); const v = $("noteText").value.trim(); if (!v) return; await tool("add_note", {text: v}); $("noteText").value = ""; };
+$("memForm").onsubmit = async e => { e.preventDefault(); const k = $("memKey").value.trim(), v = $("memVal").value.trim(); if (!k || !v) return;
+  await tool("remember", {key: k, value: v}); $("memKey").value = $("memVal").value = ""; };
+(() => { const d = new Date(Date.now() + 3600e3); d.setMinutes(0); $("remAt").value = new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); })();
+
+tickClock(); setInterval(tickClock, 10000);
 refresh(); setInterval(refresh, 5000);
 refreshWork(); setInterval(refreshWork, 60000);
+refreshLinks(); setInterval(refreshLinks, 60000);
+loadWeather(); setInterval(loadWeather, 600000);
 </script>
 </body>
 </html>

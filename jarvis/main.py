@@ -42,6 +42,18 @@ def main():
         print(f"❌ Не найден {key}. Откройте файл .env и вставьте ключ.")
         sys.exit(1)
 
+    # Дашборд и анимация стартуют первыми — пока идёт анимация, настраиваются микрофон и мозг
+    t_start = time.time()
+    url = dashboard.start()
+    intro_on = config.INTRO_ANIMATION and "--no-intro" not in sys.argv
+    if intro_on:
+        from core import intro
+        intro_on = intro.launch(url)
+    brief_box = {}
+    if config.MORNING_BRIEF:
+        from core.briefing import brief
+        threading.Thread(target=lambda: brief_box.update(text=brief()), daemon=True).start()
+
     if text_mode:
         from core.voice import TextIO
         io = TextIO()
@@ -67,14 +79,22 @@ def main():
         with lock:
             return brain.ask(text)
 
-    url = dashboard.start(ask, io.confirm)
+    dashboard.BRAIN.update(ask=ask, confirm=io.confirm)
     threading.Thread(target=reminder_loop, args=(io,), daemon=True).start()
-    if "--no-browser" not in sys.argv:
-        webbrowser.open(url)
-
     print(f"📊 Дашборд: {url}")
-    wake = config.WAKE_WORDS[0].capitalize()
-    io.say(f"Джарвис на связи, {config.USER_NAME}." + ("" if text_mode else f" Скажите «{wake}» и команду."))
+
+    if intro_on:  # приветствие звучит, когда на экране появляется надпись
+        time.sleep(max(0.0, 3.6 - (time.time() - t_start)))
+    io.say(config.GREETING.format(user=config.USER_NAME))
+    if config.MORNING_BRIEF:
+        for _ in range(40):  # сводка собирается параллельно; ждём не дольше 4 секунд
+            if "text" in brief_box:
+                break
+            time.sleep(0.1)
+        if brief_box.get("text"):
+            io.say(brief_box["text"])
+    if "--no-browser" not in sys.argv:  # дашборд — после анимации, чтобы не перекрыть её
+        threading.Timer(max(0.0, 9.5 - (time.time() - t_start)), webbrowser.open, [url]).start()
 
     follow_up_until = 0.0  # несколько секунд после ответа можно говорить без слова «Джарвис»
     while True:
@@ -98,7 +118,7 @@ def main():
 
         low = command.lower()
         if any(w in low for w in STOP_WORDS):
-            io.say(f"Отключаюсь. Хорошего дня, {config.USER_NAME}.")
+            io.say(f"Всегда к вашим услугам, {config.USER_NAME}. Отключаюсь.")
             break
         if any(w in low for w in RESET_WORDS):
             brain.reset()
