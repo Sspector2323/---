@@ -221,6 +221,9 @@ def run_test(svc: str) -> tuple[bool, str]:
         text = str(e)
         if "ProxyError" in type(e).__name__ or "Connection" in type(e).__name__ or "Max retries" in text:
             text = "нет связи с сервисом — проверьте интернет или VPN"
+        elif "application-specific password" in text.lower():
+            text = ("Gmail требует пароль приложения, а не обычный пароль. Включите двухэтапную проверку и создайте "
+                    "пароль на myaccount.google.com/apppasswords")
         elif "AUTHENTICATIONFAILED" in text.upper() or "LOGIN" in text.upper() and "fail" in text.lower():
             text = "почта не приняла пароль — нужен именно пароль приложения, и включён IMAP"
         elif "403" in text and "github" in text:

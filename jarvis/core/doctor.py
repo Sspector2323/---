@@ -55,8 +55,14 @@ def check_env() -> list[str]:
         seen[k] = n
         raw = v
         v = v.strip()
-        if v[:1] in "\"'«" or v[-1:] in "\"'»":
-            out.append(f"{WARN} {k}: значение в кавычках — кавычки лучше убрать.")
+        if v in ('""', "''"):
+            if k in SECRET or k in ("EMAIL_ADDRESS",):
+                out.append(f"○ {k}: пусто — ключ ещё не вписан (строка {n}).")
+            continue
+        if (v[:1] in "\"'" and v[-1:] != v[:1]) or (v[-1:] in "\"'" and v[:1] != v[-1:]):
+            out.append(f"{BAD} {k}: кавычка открыта, но не закрыта — Джарвис не прочитает эту строку. Уберите кавычки.")
+        elif v[:1] in "\"'«":
+            out.append(f"{WARN} {k}: значение в кавычках — работает, но лучше без них.")
         if raw != raw.strip() and v:
             out.append(f"{WARN} {k}: пробел вокруг значения — лучше «{k}=значение» без пробелов.")
         if k in SECRET and v and " " in v and k != "EMAIL_PASSWORD":
