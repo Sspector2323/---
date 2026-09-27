@@ -77,13 +77,7 @@ SECRET_KEYS = {k for k, _, kind, *_ in SETTINGS if kind == "secret"}
 
 
 def _read_env() -> dict:
-    values = {}
-    if ENV_PATH.exists():
-        for line in ENV_PATH.read_text(encoding="utf-8-sig").splitlines():
-            if "=" in line and not line.lstrip().startswith("#"):
-                k, v = line.split("=", 1)
-                values[k.strip()] = v.strip()
-    return values
+    return config.read_env_file(ENV_PATH)
 
 
 def _write_env(updates: dict):

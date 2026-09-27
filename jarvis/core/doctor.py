@@ -44,28 +44,23 @@ def check_env() -> list[str]:
             out.append(f"{WARN} Строка {n}: нет знака «=» — Джарвис её пропустит: «{line[:40]}»")
             continue
         k, v = line.split("=", 1)
-        if k != k.strip() or " " in k.strip():
-            out.append(f"{WARN} Строка {n}: пробел в названии «{k}» — должно быть без пробелов: {k.strip()}=…")
-        k = k.strip()
+        k = k.strip().removeprefix("export ").strip()
+        if " " in k:
+            out.append(f"{WARN} Строка {n}: пробел внутри названия «{k}» — Джарвис эту строку не поймёт.")
         if k not in KNOWN_KEYS:
             close = [x for x in KNOWN_KEYS if x.replace("_", "") == k.upper().replace("_", "")]
             out.append(f"{WARN} Строка {n}: неизвестная настройка «{k}»" + (f" — может, {close[0]}?" if close else ""))
         if k in seen:
             out.append(f"{WARN} «{k}» записан дважды (строки {seen[k]} и {n}) — действует последняя строка.")
         seen[k] = n
-        raw = v
-        v = v.strip()
-        if v in ('""', "''"):
-            if k in SECRET or k in ("EMAIL_ADDRESS",):
-                out.append(f"○ {k}: пусто — ключ ещё не вписан (строка {n}).")
+        raw = v.strip()
+        if (raw[:1] in "\"'" and raw[-1:] != raw[:1]) or (raw[-1:] in "\"'" and raw[:1] != raw[-1:]):
+            out.append(f"{BAD} {k}: кавычка открыта, но не закрыта — уберите кавычки.")
+        v = raw.strip("\"'«»“” ")
+        if v == "" and (k in SECRET or k == "EMAIL_ADDRESS"):
+            out.append(f"○ {k}: пусто — ключ ещё не вписан (строка {n}).")
             continue
-        if (v[:1] in "\"'" and v[-1:] != v[:1]) or (v[-1:] in "\"'" and v[:1] != v[-1:]):
-            out.append(f"{BAD} {k}: кавычка открыта, но не закрыта — Джарвис не прочитает эту строку. Уберите кавычки.")
-        elif v[:1] in "\"'«":
-            out.append(f"{WARN} {k}: значение в кавычках — работает, но лучше без них.")
-        if raw != raw.strip() and v:
-            out.append(f"{WARN} {k}: пробел вокруг значения — лучше «{k}=значение» без пробелов.")
-        if k in SECRET and v and " " in v and k != "EMAIL_PASSWORD":
+        if k in SECRET and " " in v and k != "EMAIL_PASSWORD":
             out.append(f"{BAD} {k}: внутри ключа пробел — скопируйте ключ заново целиком.")
         pre = PREFIX.get(k)
         if pre and v and not v.startswith(pre):
@@ -83,7 +78,17 @@ def main():
     print("=" * 64)
     print("  Диагностика J.A.R.V.I.S.")
     print("=" * 64)
-    print(f"\nПапка: {config.ROOT}\nМозг: {config.AI_PROVIDER}   Модель OpenAI: {config.OPENAI_MODEL}\n")
+    import datetime as _dt
+    env = config.ENV_FILE
+    when = ""
+    if env.exists():
+        mins = int((_dt.datetime.now().timestamp() - env.stat().st_mtime) // 60)
+        when = "только что" if mins < 1 else f"{mins} мин назад" if mins < 120 else _dt.datetime.fromtimestamp(env.stat().st_mtime).strftime("%d.%m %H:%M")
+    print(f"\nФайл настроек: {env}\n  изменён: {when or '—'}  ← если вы правили .env недавно, а здесь давно — вы правите ДРУГОЙ файл")
+    print(f"Мозг: {config.AI_PROVIDER}   Модель OpenAI: {config.OPENAI_MODEL}\n")
+    if config.SHADOWED:
+        print("⚠️ В Windows есть переменные с теми же именами (Джарвис теперь берёт значения из .env): "
+              + ", ".join(config.SHADOWED) + "\n")
     print("— Файл настроек .env —")
     for line in check_env():
         print("  " + line)
@@ -118,6 +123,7 @@ def main():
     except Exception:  # noqa: BLE001
         print(f"  {WARN} pywebview не установлен — анимация будет в браузере. Запустите update_jarvis.bat")
     print("\nГотово. Если есть ❌ — сфотографируйте это окно (ключей в нём не видно) и пришлите Claude.")
+    print("Чтобы открыть ИМЕННО этот .env в Блокноте — дважды кликните edit_env.bat")
 
 
 if __name__ == "__main__":

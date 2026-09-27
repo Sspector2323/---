@@ -2,12 +2,35 @@
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")  # без рекламной строки pygame в окне
 
 ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT / ".env", encoding="utf-8-sig")  # -sig: Блокнот иногда сохраняет с BOM
+ENV_FILE = ROOT / ".env"
+
+
+def read_env_file(path: Path = ENV_FILE) -> dict:
+    """Простое и терпимое чтение .env: BOM, пробелы вокруг «=», кавычки любого вида, «export» — всё прощаем."""
+    values = {}
+    if not path.exists():
+        return values
+    for line in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        key = key.strip().removeprefix("export ").strip()
+        val = val.strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+            val = val[1:-1]
+        val = val.strip().strip("«»“”").strip()
+        values[key] = val
+    return values
+
+
+# Значения из .env главнее одноимённых переменных Windows: иначе Джарвис молча игнорирует файл
+_file_values = read_env_file()
+SHADOWED = {k: os.environ[k] for k, v in _file_values.items() if k in os.environ and os.environ[k] != v}
+os.environ.update({k: v for k, v in _file_values.items() if v != "" or k not in os.environ})
 
 DATA_DIR = ROOT / "data"
 DATA_DIR.mkdir(exist_ok=True)
