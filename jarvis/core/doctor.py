@@ -108,7 +108,11 @@ def main():
         ok, msg = run_test(svc)
         print(f"  {OK if ok else BAD} {name}: {re.sub(r'^(Claude Code: )', '', msg)}")
         if svc == "claude" and not ok:
-            from .brain_claude_code import STATUS
+            from .brain_claude_code import STATUS, token_vars_in_windows
+            tv = token_vars_in_windows()
+            if tv:
+                print(f"     {WARN} В Windows заданы {', '.join(tv)} — они перебивают вход по подписке. "
+                      "Запустите login_claude.bat: он предложит их удалить.")
             if STATUS.get("detail"):
                 print("     Что ответил сам Claude Code:")
                 for ln in STATUS["detail"].splitlines()[-6:]:

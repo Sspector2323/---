@@ -33,12 +33,37 @@ STATUS = {"ok": None, "note": "проверяю…", "detail": ""}
 AUTH_WORDS = ("401", "authenticat", "oauth", "log in", "login", "not logged", "invalid api key")
 
 
+TOKEN_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")
+
+
 def _clean_env() -> dict:
-    """Окружение для Claude Code: без пустых ANTHROPIC_* и без платного ключа — вход по подписке."""
-    env = {k: v for k, v in os.environ.items()
-           if not (k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN") and not v.strip())}
-    env.pop("ANTHROPIC_API_KEY", None)
-    return env
+    """Окружение для Claude Code: вход по подписке (/login). Переменные с ключами/токенами перебивают
+    нормальный вход и дают «401 OAuth access token is invalid», поэтому их не передаём."""
+    return {k: v for k, v in os.environ.items() if k not in TOKEN_VARS}
+
+
+def token_vars_in_windows() -> list[str]:
+    """Какие переменные с токенами Claude заданы в Windows (они ломают вход в Claude Code)."""
+    found = [k for k in TOKEN_VARS if os.environ.get(k, "").strip()]
+    try:
+        import winreg
+        for root, key in ((winreg.HKEY_CURRENT_USER, "Environment"),
+                          (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment")):
+            try:
+                with winreg.OpenKey(root, key) as k:
+                    for name in TOKEN_VARS:
+                        try:
+                            if winreg.QueryValueEx(k, name)[0] and name not in found:
+                                found.append(name)
+                        except OSError:
+                            pass
+            except OSError:
+                pass
+    except ImportError:
+        pass
+    # ключ из .env Джарвиса — это не переменная Windows, его не считаем
+    from . import config
+    return [n for n in found if not (n == "ANTHROPIC_API_KEY" and n in config.read_env_file() and n not in config.SHADOWED)]
 
 
 def check(exe: str | None = None) -> dict:
@@ -59,17 +84,21 @@ def check(exe: str | None = None) -> dict:
             data = {}
         import re as _re
         STATUS["detail"] = _re.sub(r"\x1b\[[0-9;]*m", "", (data.get("result") if data else "") or out).strip()[-400:]
-        low = out.lower()
-        region = any(w in low for w in ("not available in your", "unsupported_country", "region", "country"))
-        forbidden = "403" in low or "forbidden" in low or "permission" in low
+        low = STATUS["detail"].lower()
+        region = any(w in low for w in ("not available in your", "unsupported_country", "unsupported country"))
+        forbidden = "403" in low or "forbidden" in low
         if data and not data.get("is_error"):
             STATUS.update(ok=True, note="на связи")
+        elif any(w in low for w in AUTH_WORDS):
+            extra = token_vars_in_windows()
+            STATUS.update(ok=False, note=("в Windows задана переменная " + ", ".join(extra) + " — она ломает вход; "
+                                          "запустите login_claude.bat") if extra else
+                          "вход устарел — login_claude.bat → /logout → /login")
         elif region:
             STATUS.update(ok=False, note="Anthropic не пускает из вашего региона — включите VPN в режиме TUN (для всех программ)")
         elif forbidden:
             STATUS.update(ok=False, note="доступ запрещён (403): нужен VPN для всех программ или подписка Pro/Max")
-        elif any(w in low for w in AUTH_WORDS):
-            STATUS.update(ok=False, note="не выполнен вход — login_claude.bat")
+
         else:
             STATUS.update(ok=False, note=(data.get("result") or out or "не отвечает")[:80])
     except Exception as e:  # noqa: BLE001

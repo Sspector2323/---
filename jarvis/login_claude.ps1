@@ -19,10 +19,37 @@ if ($userPath -notlike "*$bin*") {
     [Environment]::SetEnvironmentVariable("Path", ($userPath.TrimEnd(";") + ";" + $bin), "User")
     Write-Host "Прописал Claude Code в PATH — в новых окнах команда claude будет работать." -ForegroundColor Green
 }
+# Переменные с ключами/токенами Claude перебивают нормальный вход (ошибка «401 OAuth access token is invalid»)
+$bad = @()
+foreach ($name in "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY") {
+    foreach ($scope in "User", "Machine") {
+        if ([Environment]::GetEnvironmentVariable($name, $scope)) { $bad += "$name ($scope)" }
+    }
+    Set-Item -Path "Env:$name" -Value $null -ErrorAction SilentlyContinue  # в этом окне — сразу убираем
+}
+if ($bad.Count -gt 0) {
+    Write-Host ""
+    Write-Host "Нашёл переменные Windows, которые ломают вход в Claude Code:" -ForegroundColor Yellow
+    $bad | ForEach-Object { Write-Host "   • $_" }
+    $answer = Read-Host "Удалить их? (д/н)"
+    if ($answer -match "^(д|да|y|yes)") {
+        foreach ($name in "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY") {
+            [Environment]::SetEnvironmentVariable($name, $null, "User")
+            try { [Environment]::SetEnvironmentVariable($name, $null, "Machine") } catch {
+                if ([Environment]::GetEnvironmentVariable($name, "Machine")) {
+                    Write-Host "   $name задана для всего компьютера — запустите этот файл правой кнопкой → «Запуск от имени администратора»." -ForegroundColor Yellow
+                }
+            }
+        }
+        Write-Host "Удалил. (Ключ OpenAI и остальные настройки Джарвиса не тронуты.)" -ForegroundColor Green
+    }
+}
+
 Write-Host ""
-Write-Host "Сейчас откроется Claude Code." -ForegroundColor Cyan
-Write-Host "  1. Наберите  /login  и нажмите Enter — откроется браузер, войдите в аккаунт Claude."
-Write-Host "  2. Когда вход завершится, наберите  /exit  и закройте окно."
+Write-Host "Сейчас откроется Claude Code. Сделаем чистый вход:" -ForegroundColor Cyan
+Write-Host "  1. Наберите  /logout  и нажмите Enter (если скажет, что вы и так не вошли — ничего страшного)."
+Write-Host "  2. Наберите  /login  → выберите вход через подписку Claude (Claude account with subscription) → войдите в браузере."
+Write-Host "  3. Когда вход завершится, наберите  /exit."
 Write-Host ""
 & $exe
 
