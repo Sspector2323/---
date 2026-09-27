@@ -12,6 +12,7 @@ import time
 import webbrowser
 
 from core import config, dashboard
+from core.quick import try_quick
 from core.tools.tasks import due_reminders
 
 STOP_WORDS = ("выключись", "отключись", "завершить работу", "пока джарвис", "выход")
@@ -74,7 +75,7 @@ def main():
         heard = io.listen(timeout=None if text_mode else 5, phrase_limit=15)
         if not heard:
             continue
-        print(f"🎤 Вы: {heard}")
+        print(f"🎤 Вы: {heard}" + ("" if text_mode else f"   (⏱ распознал за {io.last_stt:.1f} с)"))
 
         if text_mode or time.time() < follow_up_until:
             command = strip_wake(heard) or heard
@@ -83,7 +84,7 @@ def main():
             if command is None:
                 continue  # говорили не с Джарвисом
             if not command:
-                io.say("Слушаю.")
+                io.beep()  # «слушаю» — сигналом, это мгновенно
                 command = io.listen(timeout=8, phrase_limit=20)
                 if not command:
                     continue
@@ -101,7 +102,15 @@ def main():
             follow_up_until = 0
             continue
 
-        io.say(ask(command))
+        t0 = time.time()
+        answer = try_quick(command)
+        if answer is None:
+            answer = ask(command)
+            print(f"  ⏱ мозг думал {time.time() - t0:.1f} с")
+        if answer:
+            t1 = time.time()
+            io.say(answer)
+            print(f"  ⏱ голос {time.time() - t1:.1f} с")
         follow_up_until = time.time() + 8
 
 

@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Настройки Джарвиса</title>
+<style>
+  :root { --bg: #070b12; --panel: #0d1520; --line: #1a2a3d; --text: #d7e6f5; --muted: #6f87a1; --accent: #2fd4ff; --ok: #4ade80; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(ellipse at top, #0c1a2b, var(--bg) 60%); color: var(--text);
+         font: 15px/1.5 "Segoe UI", system-ui, sans-serif; min-height: 100vh; }
+  header { display: flex; align-items: center; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0; font-size: 20px; letter-spacing: 3px; color: var(--accent); }
+  a { color: var(--accent); }
+  .back { margin-left: auto; text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  main { max-width: 860px; margin: 0 auto; padding: 16px 24px 40px; display: grid; gap: 16px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+  h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); }
+  .row { display: grid; grid-template-columns: 1fr 1.2fr; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .row:last-of-type { border-bottom: 0; }
+  label small { display: block; color: var(--ok); font-size: 12px; }
+  input, select { width: 100%; background: #08101a; border: 1px solid var(--line); color: var(--text);
+                  border-radius: 8px; padding: 8px 10px; font: inherit; }
+  button { margin-top: 14px; background: var(--accent); color: #031018; border: 0; border-radius: 8px; padding: 10px 18px;
+           font: inherit; font-weight: 600; cursor: pointer; }
+  #msg { margin-left: 12px; color: var(--ok); }
+  ol, ul { margin: 0; padding-left: 20px; } li { margin: 6px 0; }
+  code { background: #08101a; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  @media (max-width: 600px) { header, main { padding-left: 16px; padding-right: 16px; } .row { grid-template-columns: 1fr; gap: 4px; } }
+</style>
+</head>
+<body>
+<header><h1>НАСТРОЙКИ</h1><a class="back" href="/">← Дашборд</a></header>
+<main>
+  <section>
+    <h2>Ключи, почта, голос</h2>
+    <form id="form"></form>
+  </section>
+
+  <section>
+    <h2>Доступы к компьютеру (Windows)</h2>
+    <ol>
+      <li><b>Микрофон.</b> Пуск → Параметры → Конфиденциальность и защита → Микрофон → включите
+        «Доступ к микрофону» и «Разрешить классическим приложениям доступ к микрофону».</li>
+      <li><b>Полный доступ (права администратора).</b> Без них Джарвис делает всё от вашего имени, но не может
+        управлять окнами, запущенными от администратора, и выполнять системные команды.
+        Чтобы дать полный доступ: правой кнопкой по <code>start_jarvis.bat</code> → «Запуск от имени администратора».</li>
+      <li><b>Без лишних вопросов.</b> В поле «Спрашивать да/нет…» выше выберите <code>false</code> — тогда выключение ПК,
+        удаление файлов, письма и команды терминала он будет выполнять сразу. Рекомендуем оставить <code>true</code>,
+        хотя бы первое время.</li>
+      <li><b>Почта.</b> Нужен не обычный пароль, а «пароль приложения»:
+        <a href="https://myaccount.google.com/apppasswords" target="_blank">Gmail</a> ·
+        <a href="https://id.yandex.ru/security/app-passwords" target="_blank">Яндекс</a> ·
+        Mail.ru: Настройки → Безопасность → Пароли для внешних приложений.</li>
+      <li><b>Файлы.</b> Джарвис видит все ваши папки (рабочий стол, загрузки, документы и любые другие) —
+        отдельно ничего давать не нужно.</li>
+      <li><b>Большие задачи через Claude Code.</b> Установите Claude Code (инструкция в README), и Джарвис сможет
+        поручать ему сложные задачи.</li>
+    </ol>
+  </section>
+</main>
+<script>
+const TOKEN = "__TOKEN__";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function load() {
+  const items = await fetch("/api/settings").then(r => r.json());
+  document.getElementById("form").innerHTML = items.map(it => {
+    const status = it.kind === "secret" ? `<small>${it.is_set ? "✓ задан (оставьте поле пустым, чтобы не менять)" : "не задан"}</small>` : "";
+    let field;
+    if (it.kind === "select") {
+      const opts = it.options.includes(it.value) || !it.value ? it.options : [it.value, ...it.options];
+      field = `<select name="${it.key}">${opts.map(o => `<option ${o === it.value ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+    } else {
+      field = `<input name="${it.key}" type="${it.kind === "secret" ? "password" : "text"}" value="${esc(it.value)}"
+                placeholder="${esc(it.options)}" autocomplete="off">`;
+    }
+    return `<div class="row"><label>${esc(it.label)}${status}</label>${field}</div>`;
+  }).join("") + `<button>Сохранить</button><span id="msg"></span>`;
+}
+document.getElementById("form").onsubmit = async e => {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target).entries());
+  const r = await fetch("/api/settings", {method: "POST", body: JSON.stringify(data),
+    headers: {"Content-Type": "application/json", "X-Jarvis-Token": TOKEN}}).then(r => r.json());
+  document.getElementById("msg").textContent = r.message || "Ошибка";
+  load();
+};
+load();
+</script>
+</body>
+</html>

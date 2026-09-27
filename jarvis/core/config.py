@@ -23,6 +23,8 @@ EFFORT = os.getenv("JARVIS_EFFORT", "low")
 
 WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "джарвис,jarvis").split(",") if w.strip()]
 TTS_VOICE = os.getenv("TTS_VOICE", "ru-RU-DmitryNeural")
+# Запасной голос Windows, если основной недоступен (на многих ПК он только женский — Irina)
+OFFLINE_VOICE = _bool("OFFLINE_VOICE", True)
 USER_NAME = os.getenv("USER_NAME", "сэр")
 CITY = os.getenv("CITY", "Москва")
 
