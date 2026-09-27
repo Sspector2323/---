@@ -1,7 +1,6 @@
 """«Рабочая зона» (идея из Notion), проекты в VS Code / Cursor, задачи для Codex."""
 import difflib
 import os
-import shutil
 import subprocess
 import webbrowser
 from pathlib import Path
@@ -35,12 +34,8 @@ def find_project(name: str) -> Path | None:
 
 def editor_exe(editor: str) -> str | None:
     """vscode → code; cursor → cursor (или Cursor.exe в стандартной папке установки)."""
-    if editor == "cursor":
-        for c in (shutil.which("cursor"), os.path.expandvars(r"%LocalAppData%\Programs\cursor\Cursor.exe")):
-            if c and os.path.exists(c):
-                return c
-        return None
-    return shutil.which("code")
+    from ..finder import find
+    return find("cursor" if editor == "cursor" else "code")
 
 
 def _open_in(exe: str, path: Path):
@@ -73,7 +68,8 @@ def open_project(name: str, editor: str | None = None):
       {"task": S("Подробное описание задачи"), "project": S("Название проекта (необязательно)")},
       ["task"], dangerous=True)
 def codex_task(task: str, project: str | None = None):
-    exe = shutil.which("codex")
+    from ..finder import find
+    exe = find("codex")
     if not exe:
         return "Codex не установлен. Установка: npm install -g @openai/codex, затем codex login."
     cwd = (find_project(project) if project else None) or Path(config.PROJECTS_DIR).expanduser()

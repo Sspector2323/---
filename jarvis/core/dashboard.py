@@ -15,6 +15,8 @@ from .tools import tasks as t
 WEB = __import__("pathlib").Path(__file__).parent / "web"
 app = Flask(__name__)
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
+import flask.cli  # noqa: E402
+flask.cli.show_server_banner = lambda *a, **k: None  # без служебного текста Flask в окне Джарвиса
 
 BRAIN = {"ask": None, "confirm": None}
 _ask_lock = threading.Lock()
@@ -64,6 +66,7 @@ SETTINGS = [
     ("GITHUB_TOKEN", "GitHub: токен", "secret", "github_pat_…"),
     ("PROJECTS_DIR", "Папка с проектами на компьютере", "text", "C:\\Users\\вы\\Projects"),
     ("EDITOR", "Редактор по умолчанию", "select", ["cursor", "vscode"]),
+    ("CLAUDE_PATH", "Путь к Claude Code (если Джарвис его не находит)", "text", "C:\\Users\\вы\\.local\\bin\\claude.exe"),
     ("WORKSPACE_URLS", "Рабочая зона: сайты через запятую", "text", "https://railway.com/dashboard,…"),
 ]
 SECRET_KEYS = {k for k, _, kind, _ in SETTINGS if kind == "secret"}

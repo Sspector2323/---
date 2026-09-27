@@ -72,7 +72,15 @@ def main():
         brain = Brain(confirm=io.confirm, on_status=lambda s: print("  " + s))
     except RuntimeError as e:
         print(f"❌ {e}")
-        sys.exit(1)
+        if config.AI_PROVIDER == "claude_code" and os.getenv("OPENAI_API_KEY"):
+            print("↪ Пока работаю на мозге OpenAI. Проверьте Claude Code: в НОВОМ окне PowerShell — claude --version")
+            from core.brain_openai import OpenAIBrain
+            brain = OpenAIBrain(confirm=io.confirm, on_status=lambda s: print("  " + s))
+        else:
+            print("  Проверьте в НОВОМ окне PowerShell: claude --version. Если версия показывается — "
+                  "впишите путь из команды  where.exe claude  в ⚙ Настройки → CLAUDE_PATH.")
+            input("Нажмите Enter для выхода…")
+            sys.exit(1)
     lock = threading.Lock()
 
     def ask(text: str) -> str:

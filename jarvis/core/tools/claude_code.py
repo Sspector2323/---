@@ -1,5 +1,4 @@
 """Делегирование сложных задач Claude Code, если он установлен на компьютере."""
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -12,7 +11,8 @@ from . import S, tool
       {"task": S("Подробное описание задачи"), "folder": S("Рабочая папка, по умолчанию домашняя")},
       ["task"], dangerous=True)
 def claude_code(task: str, folder: str = "~"):
-    exe = shutil.which("claude")
+    from ..finder import find
+    exe = find("claude")
     if not exe:
         return ("Claude Code не установлен. Установка: Windows — `irm https://claude.ai/install.ps1 | iex` в PowerShell; "
                 "Mac/Linux — `curl -fsSL https://claude.ai/install.sh | bash`.")

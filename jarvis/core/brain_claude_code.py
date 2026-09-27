@@ -5,7 +5,6 @@
 а ответ Джарвис произносит голосом. Разговор продолжается в одной сессии Claude Code.
 """
 import json
-import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -30,7 +29,8 @@ SAFE_BUILTIN = ["Read", "Glob", "Grep", "WebSearch", "WebFetch", "TodoWrite"]
 
 class ClaudeCodeBrain:
     def __init__(self, confirm: Callable[[str], bool], on_status: Callable[[str], None] = print):
-        self.exe = shutil.which("claude")
+        from .finder import find
+        self.exe = find("claude")
         if not self.exe:
             raise RuntimeError("Claude Code не установлен. PowerShell: irm https://claude.ai/install.ps1 | iex")
         from .tools import load_all

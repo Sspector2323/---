@@ -1,10 +1,10 @@
 """Подключение Джарвиса к Cursor и Codex (MCP) и проверка, что где подключено."""
 import json
-import shutil
 import sys
 from pathlib import Path
 
 from . import config
+from .finder import find
 
 HOME = Path.home()
 SERVER = Path(__file__).resolve().with_name("mcp_server.py")
@@ -70,9 +70,9 @@ def status() -> list[dict]:
             return "не установлен"
         return "Джарвис подключён" if configured else "запустите connect_editors.bat"
 
-    has_cursor, has_codex = bool(editor_exe("cursor")), bool(shutil.which("codex"))
+    has_cursor, has_codex = bool(editor_exe("cursor")), bool(find("codex"))
     items = [
-        ("Claude Code", bool(shutil.which("claude")), "мозг Джарвиса" if config.AI_PROVIDER == "claude_code" else "установлен",
+        ("Claude Code", bool(find("claude")), "мозг Джарвиса" if config.AI_PROVIDER == "claude_code" else "установлен",
          "https://claude.ai/code"),
         ("Cursor", has_cursor and cursor_cfg, editor_note(has_cursor, cursor_cfg), "https://cursor.com"),
         ("Codex", has_codex and codex_cfg, editor_note(has_codex, codex_cfg), "https://developers.openai.com/codex"),
