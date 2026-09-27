@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S.</title>
+<style>
+  :root {
+    --bg: #070b12; --panel: #0d1520; --line: #1a2a3d; --text: #d7e6f5; --muted: #6f87a1;
+    --accent: #2fd4ff; --warn: #ffb347; --ok: #4ade80; --bad: #ff5c7a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(ellipse at top, #0c1a2b, var(--bg) 60%); color: var(--text);
+         font: 15px/1.45 "Segoe UI", system-ui, sans-serif; min-height: 100vh; }
+  header { display: flex; align-items: center; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+  .core { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--accent);
+          box-shadow: 0 0 18px var(--accent), inset 0 0 12px var(--accent); animation: pulse 3s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 30px var(--accent), inset 0 0 20px var(--accent); } }
+  h1 { margin: 0; font-size: 20px; letter-spacing: 4px; color: var(--accent); }
+  #clock { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+  main { display: grid; gap: 16px; padding: 16px 24px 32px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+  section.wide { grid-column: 1 / -1; }
+  h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); }
+  ul { list-style: none; margin: 0; padding: 0; max-height: 360px; overflow: auto; }
+  li { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: flex-start; }
+  li:last-child { border-bottom: 0; }
+  .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .done { text-decoration: line-through; color: var(--muted); }
+  .high { color: var(--warn); }
+  button { background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
+           cursor: pointer; padding: 2px 8px; font: inherit; }
+  button:hover { color: var(--accent); border-color: var(--accent); }
+  form { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  input, select { background: #08101a; border: 1px solid var(--line); color: var(--text); border-radius: 8px;
+                  padding: 8px 10px; font: inherit; min-width: 0; }
+  input[type=text] { flex: 1; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .stat { text-align: center; }
+  .stat b { display: block; font-size: 26px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  #answer { margin-top: 10px; color: var(--accent); white-space: pre-wrap; }
+  .who-user { color: var(--muted); } .who-jarvis { color: var(--accent); }
+  @media (max-width: 600px) { header, main { padding-left: 16px; padding-right: 16px; } .stats { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<header><div class="core"></div><h1>J.A.R.V.I.S.</h1><span id="clock"></span></header>
+<main>
+  <section class="wide">
+    <h2>Команда</h2>
+    <form id="askForm"><input type="text" id="ask" placeholder="Напишите Джарвису, например: «что у меня на завтра?»"><button>Отправить</button></form>
+    <div id="answer"></div>
+  </section>
+  <section><h2>Система</h2><div class="stats" id="sys"></div></section>
+  <section>
+    <h2>Задачи</h2><ul id="tasks"></ul>
+    <form id="taskForm">
+      <input type="text" id="taskTitle" placeholder="Новая задача">
+      <select id="taskPrio"><option>обычный</option><option>высокий</option><option>низкий</option></select>
+      <button>+</button>
+    </form>
+  </section>
+  <section><h2>Напоминания</h2><ul id="reminders"></ul></section>
+  <section><h2>Почта (последняя проверка)</h2><ul id="mail"></ul></section>
+  <section><h2>Заметки</h2><ul id="notes"></ul></section>
+  <section><h2>Что я о вас помню</h2><ul id="memory"></ul></section>
+  <section class="wide"><h2>Журнал разговора</h2><ul id="log"></ul></section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const api = (url, opts = {}) => fetch(url, {headers: {"Content-Type": "application/json"}, ...opts}).then(r => r.json());
+const list = (el, rows, fn, empty) => { $(el).innerHTML = rows.length ? rows.map(fn).join("") : `<li class="muted">${empty}</li>`; };
+
+async function refresh() {
+  const s = await api("/api/state");
+  $("clock").textContent = s.now;
+  const sys = s.system || {};
+  $("sys").innerHTML = [["CPU", sys.cpu], ["RAM", sys.ram], ["Диск", sys.disk], ["Батарея", sys.battery]]
+    .map(([k, v]) => `<div class="stat"><b>${v == null ? "—" : Math.round(v) + "%"}</b><span class="muted">${k}</span>
+      <div class="bar"><i style="width:${v || 0}%"></i></div></div>`).join("");
+  list("tasks", s.tasks, t => `<li><button onclick="toggle(${t.id})">${t.done ? "✓" : "○"}</button>
+    <span class="grow ${t.done ? "done" : ""} ${t.priority === "высокий" ? "high" : ""}">${esc(t.title)}
+    ${t.due ? `<div class="muted">до ${esc(t.due)}</div>` : ""}</span><button onclick="delTask(${t.id})">✕</button></li>`, "Задач нет");
+  list("reminders", s.reminders, r => `<li><span class="grow">${esc(r.text)}<div class="muted">${esc(r.at)}</div></span>
+    <button onclick="delRem(${r.id})">✕</button></li>`, "Напоминаний нет");
+  list("mail", s.mail, m => `<li><span class="grow"><b>${esc(m.subject)}</b><div class="muted">${esc(m.sender)}</div>
+    <div class="muted">${esc(m.snippet).slice(0, 160)}</div></span></li>`, "Скажите «Джарвис, проверь почту»");
+  list("notes", s.notes, n => `<li><span class="grow">${esc(n.text)}<div class="muted">${esc(n.created)}</div></span></li>`, "Заметок нет");
+  list("memory", s.memory, m => `<li><span class="grow"><b>${esc(m.key)}:</b> ${esc(m.value)}</span></li>`, "Пока ничего");
+  list("log", s.log, l => `<li><span class="muted">${esc(l.ts.slice(11))}</span>
+    <span class="grow who-${l.who}">${l.who === "user" ? "Вы" : "Джарвис"}: ${esc(l.text)}</span></li>`, "Пусто");
+}
+async function toggle(id) { await api(`/api/tasks/${id}/toggle`, {method: "POST"}); refresh(); }
+async function delTask(id) { await api(`/api/tasks/${id}`, {method: "DELETE"}); refresh(); }
+async function delRem(id) { await api(`/api/reminders/${id}`, {method: "DELETE"}); refresh(); }
+$("taskForm").onsubmit = async e => {
+  e.preventDefault();
+  if (!$("taskTitle").value.trim()) return;
+  await api("/api/tasks", {method: "POST", body: JSON.stringify({title: $("taskTitle").value, priority: $("taskPrio").value})});
+  $("taskTitle").value = ""; refresh();
+};
+$("askForm").onsubmit = async e => {
+  e.preventDefault();
+  const text = $("ask").value.trim(); if (!text) return;
+  $("answer").textContent = "Думаю…"; $("ask").value = "";
+  try { $("answer").textContent = (await api("/api/ask", {method: "POST", body: JSON.stringify({text})})).answer; }
+  catch { $("answer").textContent = "Ошибка связи"; }
+  refresh();
+};
+refresh(); setInterval(refresh, 5000);
+</script>
+</body>
+</html>
