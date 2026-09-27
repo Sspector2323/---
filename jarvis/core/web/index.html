@@ -298,9 +298,14 @@ async function tool(name, args = {}, confirmText = null) {
 }
 async function ask(text) {
   if (!text) return;
-  const a = $("answer"); a.className = "answer show think"; a.textContent = "Джарвис думает…";
+  const a = $("answer"); a.className = "answer show think";
+  const lines = ["Секунду, " + USER + "…", "Уже занимаюсь…", "Сверяю детали. Предпочитаю точность спешке…",
+                 "Почти готово…", "Задача непростая, но я справлюсь…", "Минуточку, навожу лоск…", "Процессоры греются, но держатся…"];
+  let k = 0; a.textContent = lines[0];
+  const spin = setInterval(() => { a.textContent = lines[++k % lines.length]; }, 3000);
   try { const r = await post("/api/ask", {text}); a.className = "answer show"; a.textContent = r.answer; }
   catch { a.className = "answer show"; a.textContent = "Нет связи с Джарвисом"; }
+  finally { clearInterval(spin); }
   refresh(); refreshWork();
 }
 
@@ -443,7 +448,7 @@ async function refresh() {
 const CI = {success: "✓ проверки прошли", failure: "✗ проверки упали", in_progress: "… проверки идут", queued: "… в очереди", cancelled: "отменено"};
 async function refreshWork() {
   const w = await api("/api/work"); WORK = w;
-  const hint = (what, where) => `<div class="empty">${what} не подключён — <a href="/settings">⚙ Настройки</a> → ${where}</div>`;
+  const hint = (what, where) => `<div class="empty">${what} не подключён — <a href="/settings#g-${what === "GitHub" ? "github" : "notion"}">подключить за 3 минуты →</a></div>`;
   if (w.github) {
     $("rcount").textContent = w.github.length;
     $("repos").innerHTML = w.github.map((r, i) => `<div class="repo" onclick="openRepo(${i})">

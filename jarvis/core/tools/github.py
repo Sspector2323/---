@@ -22,6 +22,8 @@ def _get(path: str, **params):
         raise RuntimeError("GitHub не подключён: вставьте GITHUB_TOKEN в ⚙ Настройках")
     r = requests.get(API + path, params=params, timeout=20, headers={
         "Authorization": f"Bearer {config.GITHUB_TOKEN}", "Accept": "application/vnd.github+json"})
+    if r.status_code == 401:
+        raise RuntimeError("GitHub не принял токен — он неверный или истёк, создайте новый")
     r.raise_for_status()
     return r.json()
 

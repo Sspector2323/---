@@ -18,7 +18,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 import flask.cli  # noqa: E402
 flask.cli.show_server_banner = lambda *a, **k: None  # без служебного текста Flask в окне Джарвиса
 
-BRAIN = {"ask": None, "confirm": None}
+BRAIN = {"ask": None, "confirm": None, "say": None}
 _ask_lock = threading.Lock()
 
 # Секрет этого запуска: без него дашборд не примет изменения. Чужие сайты, открытые в том же
@@ -42,37 +42,38 @@ def _page(name: str):
 
 # ---------- Настройки (.env) ----------
 ENV_PATH = config.ROOT / ".env"
+# (ключ, подпись, тип, варианты/подсказка, группа)
 SETTINGS = [
-    # (ключ, подпись, тип, варианты/подсказка)
-    ("AI_PROVIDER", "Чей мозг", "select", ["claude_code", "openai", "claude"]),
-    ("CLAUDE_CODE_MODEL", "Модель Claude Code (пусто = по подписке; sonnet/haiku — быстрее)", "text", "sonnet"),
-    ("OPENAI_API_KEY", "Ключ OpenAI", "secret", "sk-…"),
-    ("OPENAI_MODEL", "Модель OpenAI", "select", ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o"]),
-    ("ANTHROPIC_API_KEY", "Ключ Claude", "secret", "sk-ant-…"),
-    ("USER_NAME", "Как к вам обращаться", "text", "Сабина"),
-    ("GREETING", "Приветствие при запуске ({user} — имя)", "text", "Моё почтение, {user}. Я к вашим услугам."),
-    ("INTRO_ANIMATION", "Анимация появления на всех мониторах", "select", ["true", "false"]),
-    ("MORNING_BRIEF", "Сводка дня после приветствия", "select", ["true", "false"]),
-    ("DASHBOARD_SCREENS", "Дашборд при запуске: all — на всех мониторах, main — на главном, off — нет", "select", ["all", "main", "off"]),
-    ("CITY", "Город для погоды", "text", "Москва"),
-    ("WAKE_WORDS", "Слова-активаторы", "text", "джарвис,jarvis"),
-    ("TTS_VOICE", "Голос", "select", ["ru-RU-DmitryNeural", "ru-RU-SvetlanaNeural"]),
-    ("TTS_ENGINE", "Какой голос первым: edge (бесплатный) или openai (стабильный)", "select", ["edge", "openai"]),
-    ("OPENAI_VOICE", "Голос OpenAI", "select", ["onyx", "ash", "echo", "fable", "sage", "ballad"]),
-    ("OFFLINE_VOICE", "Запасной голос Windows, если основной не отвечает", "select", ["true", "false"]),
-    ("EMAIL_ADDRESS", "Почта", "text", "you@gmail.com"),
-    ("EMAIL_PASSWORD", "Пароль приложения почты", "secret", "xxxx xxxx xxxx xxxx"),
-    ("CONFIRM_DANGEROUS", "Спрашивать «да/нет» перед опасными действиями", "select", ["true", "false"]),
-    ("NOTION_TOKEN", "Notion: секрет интеграции", "secret", "ntn_…"),
-    ("NOTION_TASKS_DB", "Notion: база задач (id)", "text", "35e4ea9860c980be88d3f6d67aa0a4df"),
-    ("NOTION_HUB_PAGE", "Notion: страница «общий штаб» (id)", "text", "id страницы"),
-    ("GITHUB_TOKEN", "GitHub: токен", "secret", "github_pat_…"),
-    ("PROJECTS_DIR", "Папка с проектами на компьютере", "text", "C:\\Users\\вы\\Projects"),
-    ("EDITOR", "Редактор по умолчанию", "select", ["cursor", "vscode"]),
-    ("CLAUDE_PATH", "Путь к Claude Code (если Джарвис его не находит)", "text", "C:\\Users\\вы\\.local\\bin\\claude.exe"),
-    ("WORKSPACE_URLS", "Рабочая зона: сайты через запятую", "text", "https://railway.com/dashboard,…"),
+    ("AI_PROVIDER", "Чей мозг", "select", ["claude_code", "openai", "claude"], "brain"),
+    ("OPENAI_API_KEY", "Ключ OpenAI", "secret", "sk-…", "brain"),
+    ("OPENAI_MODEL", "Модель OpenAI (mini — быстрее)", "select", ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o"], "brain"),
+    ("CLAUDE_CODE_MODEL", "Модель Claude Code (пусто = по подписке; sonnet/haiku — быстрее)", "text", "sonnet", "brain"),
+    ("CLAUDE_PATH", "Путь к Claude Code (если Джарвис его не находит)", "text", "C:\\Users\\вы\\.local\\bin\\claude.exe", "brain"),
+    ("ANTHROPIC_API_KEY", "Ключ Claude API (только для режима claude)", "secret", "sk-ant-…", "brain"),
+    ("NOTION_TOKEN", "Секрет интеграции Notion", "secret", "ntn_…", "notion"),
+    ("NOTION_TASKS_DB", "База задач (id)", "text", "35e4ea9860c980be88d3f6d67aa0a4df", "notion"),
+    ("NOTION_HUB_PAGE", "Страница «общий штаб» (id)", "text", "3e84ea9860c981a7a7c5deaf8aafd8f8", "notion"),
+    ("GITHUB_TOKEN", "Токен GitHub", "secret", "github_pat_…", "github"),
+    ("PROJECTS_DIR", "Папка с проектами на компьютере", "text", "C:\\Users\\вы\\Projects", "github"),
+    ("EDITOR", "Редактор по умолчанию", "select", ["cursor", "vscode"], "github"),
+    ("EMAIL_ADDRESS", "Адрес почты", "text", "you@gmail.com", "email"),
+    ("EMAIL_PASSWORD", "Пароль приложения", "secret", "xxxx xxxx xxxx xxxx", "email"),
+    ("TTS_ENGINE", "Какой голос первым: edge (бесплатный) или openai (стабильный)", "select", ["edge", "openai"], "voice"),
+    ("TTS_VOICE", "Голос Microsoft", "select", ["ru-RU-DmitryNeural", "ru-RU-SvetlanaNeural"], "voice"),
+    ("OPENAI_VOICE", "Голос OpenAI", "select", ["onyx", "ash", "echo", "fable", "sage", "ballad"], "voice"),
+    ("OFFLINE_VOICE", "Запасной голос Windows, если остальные не отвечают", "select", ["true", "false"], "voice"),
+    ("WAKE_WORDS", "Слова-активаторы", "text", "джарвис,jarvis", "voice"),
+    ("USER_NAME", "Как к вам обращаться", "text", "Сабина", "look"),
+    ("GREETING", "Приветствие при запуске ({user} — имя)", "text", "Моё почтение, {user}. Я к вашим услугам.", "look"),
+    ("INTRO_ANIMATION", "Анимация появления на всех мониторах", "select", ["true", "false"], "look"),
+    ("DASHBOARD_SCREENS", "Дашборд при запуске: all — все мониторы, main — главный, off — нет", "select", ["all", "main", "off"], "look"),
+    ("MORNING_BRIEF", "Сводка дня после приветствия", "select", ["true", "false"], "look"),
+    ("CITY", "Город для погоды", "text", "Москва", "look"),
+    ("WORKSPACE_URLS", "Рабочая зона: сайты через запятую", "text", "https://railway.com/dashboard,…", "look"),
+    ("CONFIRM_DANGEROUS", "Спрашивать «да/нет» перед опасными действиями", "select", ["true", "false"], "look"),
 ]
-SECRET_KEYS = {k for k, _, kind, _ in SETTINGS if kind == "secret"}
+NEEDS_RESTART = {"AI_PROVIDER", "INTRO_ANIMATION", "DASHBOARD_SCREENS"}
+SECRET_KEYS = {k for k, _, kind, *_ in SETTINGS if kind == "secret"}
 
 
 def _read_env() -> dict:
@@ -123,12 +124,20 @@ def settings_page():
     return _page("settings.html")
 
 
+def _as_text(v) -> str:
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, list):
+        return ",".join(v)
+    return str(v or "")
+
+
 @app.get("/api/settings")
 def get_settings():
     env = _read_env()
-    return jsonify([{"key": k, "label": label, "kind": kind, "options": opts,
-                     "value": "" if k in SECRET_KEYS else env.get(k, ""),
-                     "is_set": bool(env.get(k))} for k, label, kind, opts in SETTINGS])
+    return jsonify([{"key": k, "label": label, "kind": kind, "options": opts, "group": group,
+                     "value": "" if k in SECRET_KEYS else env.get(k, _as_text(getattr(config, k, ""))),
+                     "is_set": bool(env.get(k))} for k, label, kind, opts, group in SETTINGS])
 
 
 @app.post("/api/settings")
@@ -142,7 +151,75 @@ def save_settings():
             updates[k] = v
     _write_env(updates)
     os.environ.update(updates)
-    return jsonify(ok=True, message="Сохранено. Перезапустите Джарвиса, чтобы изменения вступили в силу.")
+    _apply_live(updates)
+    restart = sorted(NEEDS_RESTART & set(updates))
+    return jsonify(ok=True, message="Сохранено и применено." + (
+        " Чтобы сменить мозг/запуск — перезапустите Джарвиса." if restart else ""))
+
+
+def _apply_live(updates: dict):
+    """Применить настройки сразу, без перезапуска: модули читают config.* в момент вызова."""
+    for k, v in updates.items():
+        cur = getattr(config, k, None)
+        if isinstance(cur, bool):
+            setattr(config, k, v.lower() in ("1", "true", "yes", "да"))
+        elif isinstance(cur, list):
+            setattr(config, k, [w.strip().lower() for w in v.split(",") if w.strip()])
+        elif isinstance(cur, str) or cur is None:
+            setattr(config, k, v)
+    if "USER_NAME" in updates and not config.USER_NAME:
+        config.USER_NAME = "Сабина"
+
+
+@app.post("/api/test/<svc>")
+def test_service(svc: str):
+    """Кнопка «Проверить» в настройках."""
+    try:
+        if svc == "notion":
+            from .tools import notion
+            rows = notion.tasks_rows(include_done=True)
+            msg = f"Notion подключён: в «Сводке задач» {len(rows)} записей."
+            if config.NOTION_HUB_PAGE:
+                notion._req("GET", f"/blocks/{config.NOTION_HUB_PAGE}/children?page_size=1")
+                msg += " Штаб доступен."
+        elif svc == "github":
+            from .tools import github
+            repos = github.overview(max_age=0)
+            msg = f"GitHub подключён: {len(repos)} репозиториев — " + ", ".join(r["name"].split("/")[1] for r in repos[:6])
+        elif svc == "email":
+            from .tools.mail import _imap
+            m = _imap()
+            m.select("INBOX", readonly=True)
+            unseen = len(m.uid("search", None, "UNSEEN")[1][0].split())
+            m.logout()
+            msg = f"Почта подключена: непрочитанных писем — {unseen}."
+        elif svc == "openai":
+            import openai
+            openai.OpenAI().models.retrieve(config.OPENAI_MODEL)
+            msg = f"OpenAI работает, модель {config.OPENAI_MODEL} доступна."
+        elif svc == "claude":
+            from .brain_claude_code import check
+            st = check()
+            if not st["ok"]:
+                return jsonify(ok=False, message=f"Claude Code: {st['note']}")
+            msg = "Claude Code на связи: вход выполнен."
+        elif svc == "voice":
+            BRAIN_SAY = BRAIN.get("say")
+            if BRAIN_SAY:
+                BRAIN_SAY(f"Проверка голоса. К вашим услугам, {config.USER_NAME}.")
+            msg = "Голос проверен — вы должны были его услышать."
+        else:
+            return jsonify(ok=False, message="Неизвестный сервис")
+        return jsonify(ok=True, message=msg)
+    except Exception as e:  # noqa: BLE001
+        text = str(e)
+        if "ProxyError" in type(e).__name__ or "Connection" in type(e).__name__ or "Max retries" in text:
+            text = "нет связи с сервисом — проверьте интернет или VPN"
+        elif "AUTHENTICATIONFAILED" in text.upper() or "LOGIN" in text.upper() and "fail" in text.lower():
+            text = "почта не приняла пароль — нужен именно пароль приложения, и включён IMAP"
+        elif "AuthenticationError" in type(e).__name__ or "401" in text:
+            text = "ключ не подходит — скопируйте его ещё раз целиком"
+        return jsonify(ok=False, message=text[:300])
 
 
 @app.get("/api/state")

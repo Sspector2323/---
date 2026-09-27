@@ -67,14 +67,46 @@ class Voice:
         return [e for e in order if not (e == "openai" and not os.getenv("OPENAI_API_KEY"))
                 and self._down.get(e, 0) < time.time()]
 
-    def say(self, text: str):
-        print(f"🤖 Джарвис: {text}")
-        if not text:
-            return
-        with self.lock:
+    confirming = False  # идёт голосовое подтверждение — перебивки молчат
+
+    def _cache_path(self, text: str):
+        import hashlib
+        folder = config.DATA_DIR / "tts_cache"
+        folder.mkdir(exist_ok=True)
+        key = hashlib.md5(f"{config.TTS_ENGINE}|{config.TTS_VOICE}|{config.OPENAI_VOICE}|{text}".encode()).hexdigest()
+        return folder / f"{key}.mp3"
+
+    def prewarm(self, phrases):
+        """Заранее озвучить частые фразы (перебивки) — потом они звучат мгновенно."""
+        import shutil
+        for text in phrases:
+            target = self._cache_path(text)
+            if target.exists():
+                continue
             for engine in self._engines():
                 try:
-                    self._play(getattr(self, f"_synth_{engine}")(text))
+                    shutil.move(getattr(self, f"_synth_{engine}")(text), target)
+                    break
+                except Exception:  # noqa: BLE001
+                    continue
+
+    def say(self, text: str, cache: bool = False, quiet: bool = False):
+        if not quiet:
+            print(f"🤖 Джарвис: {text}")
+        if not text:
+            return
+        cached = self._cache_path(text) if cache else None
+        with self.lock:
+            if cached and cached.exists():
+                self._play(str(cached), keep=True)
+                return
+            for engine in self._engines():
+                try:
+                    path = getattr(self, f"_synth_{engine}")(text)
+                    if cached:
+                        import shutil
+                        shutil.copy(path, cached)
+                    self._play(path)
                     return
                 except Exception as e:  # noqa: BLE001
                     self._down[engine] = time.time() + 600
@@ -103,7 +135,7 @@ class Voice:
             r.stream_to_file(path)
         return path
 
-    def _play(self, path: str):
+    def _play(self, path: str, keep: bool = False):
         import pygame
         try:
             if not pygame.mixer.get_init():
@@ -114,10 +146,11 @@ class Voice:
                 time.sleep(0.05)
             pygame.mixer.music.unload()
         finally:
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+            if not keep:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
 
     def _say_offline(self, text: str):
         import pyttsx3
@@ -133,10 +166,14 @@ class Voice:
         self._engine.runAndWait()
 
     def confirm(self, question: str) -> bool:
-        self.say(f"Подтвердите: {question[:200]}. Да или нет?")
-        answer = (self.listen(timeout=7, phrase_limit=4) or "").lower()
-        print(f"🎤 Вы: {answer}")
-        return any(w in answer.split() for w in YES)
+        self.confirming = True
+        try:
+            self.say(f"Подтвердите: {question[:200]}. Да или нет?")
+            answer = (self.listen(timeout=7, phrase_limit=4) or "").lower()
+            print(f"🎤 Вы: {answer}")
+            return any(w in answer.split() for w in YES)
+        finally:
+            self.confirming = False
 
 
 class TextIO:
@@ -144,8 +181,12 @@ class TextIO:
     lock = threading.Lock()
 
     last_stt = 0.0
+    confirming = False
 
     def beep(self):
+        pass
+
+    def prewarm(self, phrases):
         pass
 
     def listen(self, timeout=None, phrase_limit=None) -> str | None:
@@ -154,8 +195,8 @@ class TextIO:
         except EOFError:
             return "выход"
 
-    def say(self, text: str):
-        print(f"🤖 Джарвис: {text}")
+    def say(self, text: str, cache: bool = False, quiet: bool = False):
+        print(f"🤖 Джарвис: {text}" if not quiet else f"   … {text}")
 
     def confirm(self, question: str) -> bool:
         return input(f"❓ {question}\n   Подтвердить? (да/нет): ").strip().lower() in YES

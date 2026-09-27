@@ -28,6 +28,43 @@ EXTRA = """
 SAFE_BUILTIN = ["Read", "Glob", "Grep", "WebSearch", "WebFetch", "TodoWrite"]
 
 
+# Состояние Claude Code для дашборда: ok=True/False/None (ещё не проверяли)
+STATUS = {"ok": None, "note": "проверяю…"}
+AUTH_WORDS = ("401", "authenticat", "oauth", "log in", "login", "not logged", "invalid api key")
+
+
+def _clean_env() -> dict:
+    """Окружение для Claude Code: без пустых ANTHROPIC_* и без платного ключа — вход по подписке."""
+    env = {k: v for k, v in os.environ.items()
+           if not (k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN") and not v.strip())}
+    env.pop("ANTHROPIC_API_KEY", None)
+    return env
+
+
+def check(exe: str | None = None) -> dict:
+    """Быстрая проверка: установлен ли Claude Code и вошли ли в аккаунт."""
+    from .finder import find
+    exe = exe or find("claude")
+    if not exe:
+        STATUS.update(ok=False, note="не установлен — login_claude.bat")
+        return STATUS
+    try:
+        r = subprocess.run([exe, "-p", "Ответь одним словом: ок", "--output-format", "json", "--model", "haiku"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90,
+                           env=_clean_env(), cwd=Path.home())
+        out = (r.stdout or "") + (r.stderr or "")
+        data = json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else {}
+        if data and not data.get("is_error"):
+            STATUS.update(ok=True, note="на связи")
+        elif any(w in out.lower() for w in AUTH_WORDS):
+            STATUS.update(ok=False, note="не выполнен вход — login_claude.bat")
+        else:
+            STATUS.update(ok=False, note=(data.get("result") or out or "не отвечает")[:80])
+    except Exception as e:  # noqa: BLE001
+        STATUS.update(ok=False, note=f"ошибка: {e}"[:80])
+    return STATUS
+
+
 class ClaudeCodeBrain:
     def __init__(self, confirm: Callable[[str], bool], on_status: Callable[[str], None] = print):
         from .finder import find
@@ -40,6 +77,15 @@ class ClaudeCodeBrain:
         self.confirm = confirm
         self.session_id: str | None = None
         self.cwd = Path.home()
+        self.down_until = 0.0  # пока Claude Code недоступен — сразу отвечаем запасным мозгом
+        import threading
+        threading.Thread(target=self._startup_check, daemon=True).start()
+
+    def _startup_check(self):
+        if not check(self.exe)["ok"]:
+            import time
+            self.down_until = time.time() + 600
+            self.on_status(f"⚠ Claude Code: {STATUS['note']}. Пока отвечаю через OpenAI.")
 
     def reset(self):
         self.session_id = None
@@ -70,8 +116,11 @@ class ClaudeCodeBrain:
         return SAFE_BUILTIN + safe_jarvis + ["mcp__jarvis__approve"]
 
     def ask(self, text: str) -> str:
+        import time
         n = datetime.now()
         storage.log("user", text)
+        if time.time() < self.down_until:  # не ждём заведомо недоступный Claude Code
+            return self._fallback(text, f"{config.USER_NAME}, Claude Code пока без входа: запустите login_claude.bat.")
         system = SYSTEM.format(user=config.USER_NAME, memory=memory_text() or "пока ничего") + EXTRA
         cmd = [self.exe, "-p", f"[Сейчас {n:%Y-%m-%d %H:%M}, {DAYS[n.weekday()]}]\n{text}",
                "--output-format", "json",
@@ -85,11 +134,7 @@ class ClaudeCodeBrain:
             cmd += ["--resume", self.session_id]
         self.on_status("⚙ передаю Claude Code…")
         try:
-            # пустые ANTHROPIC_* из .env не передаём: Claude Code должен входить по подписке
-            env = {k: v for k, v in os.environ.items()
-                   if not (k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN") and not v.strip())}
-            if config.AI_PROVIDER == "claude_code":
-                env.pop("ANTHROPIC_API_KEY", None)  # иначе Claude Code возьмёт платный ключ вместо подписки
+            env = _clean_env()
             r = subprocess.run(cmd, cwd=self.cwd, capture_output=True, text=True, encoding="utf-8",
                                errors="replace", timeout=900, env=env)
             data = json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else {}
@@ -104,11 +149,14 @@ class ClaudeCodeBrain:
                     answer = "Claude Code не авторизован. Откройте PowerShell, наберите claude и войдите в аккаунт."
             else:
                 self.session_id = data.get("session_id") or self.session_id
+                if not data.get("is_error"):
+                    STATUS.update(ok=True, note="на связи")
                 answer = (data.get("result") or "").strip() or "Готово."
                 if data.get("is_error"):
                     self.reset()
-                    low = answer.lower()
-                    if "401" in low or "authenticat" in low or "oauth" in low or "log in" in low or "login" in low:
+                    if any(w in answer.lower() for w in AUTH_WORDS):
+                        self.down_until = time.time() + 600
+                        STATUS.update(ok=False, note="не выполнен вход — login_claude.bat")
                         return self._fallback(text, f"{config.USER_NAME}, Claude Code разлогинился: откройте PowerShell, "
                                               "наберите claude и войдите заново командой слеш логин.")
         storage.log("jarvis", answer)

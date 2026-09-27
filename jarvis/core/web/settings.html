@@ -4,87 +4,150 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Настройки Джарвиса</title>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #070b12; --panel: #0d1520; --line: #1a2a3d; --text: #d7e6f5; --muted: #6f87a1; --accent: #2fd4ff; --ok: #4ade80; }
+  :root { --bg: #03070d; --panel: rgba(10, 22, 38, .78); --solid: #0a1626; --line: rgba(56, 217, 255, .14); --line2: rgba(56, 217, 255, .3);
+          --text: #dcebf7; --muted: #7d93ab; --accent: #38d9ff; --ok: #4ade80; --bad: #fb7185; --warn: #fbbf24;
+          --font: "Exo 2", "Segoe UI", system-ui, sans-serif; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: radial-gradient(ellipse at top, #0c1a2b, var(--bg) 60%); color: var(--text);
-         font: 15px/1.5 "Segoe UI", system-ui, sans-serif; min-height: 100vh; }
-  header { display: flex; align-items: center; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
-  h1 { margin: 0; font-size: 20px; letter-spacing: 3px; color: var(--accent); }
+  body { margin: 0; color: var(--text); font: 15px/1.5 var(--font); min-height: 100vh;
+         background: radial-gradient(1100px 500px at 50% -10%, #0b2340, transparent 60%), var(--bg); }
   a { color: var(--accent); }
-  .back { margin-left: auto; text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
-  main { max-width: 860px; margin: 0 auto; padding: 16px 24px 40px; display: grid; gap: 16px; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
-  h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); }
-  .row { display: grid; grid-template-columns: 1fr 1.2fr; gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  button, input, select { font: inherit; color: inherit; }
+  header { display: flex; align-items: center; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  h1 { margin: 0; font: 700 18px Orbitron, sans-serif; letter-spacing: 4px; color: var(--accent); }
+  .back { margin-left: auto; text-decoration: none; border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px; }
+  main { max-width: 980px; margin: 0 auto; padding: 18px 24px 60px; display: grid; gap: 16px; }
+  .lead { color: var(--muted); margin: 0; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; }
+  section h2 { margin: 0; display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 500; }
+  section h2 .ic { font-size: 22px; }
+  .state { margin-left: auto; font-size: 13px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .state.ok { color: var(--ok); border-color: rgba(74,222,128,.4); } .state.bad { color: var(--bad); border-color: rgba(251,113,133,.4); }
+  ol.steps { margin: 12px 0 4px; padding-left: 22px; color: #c3d4e4; } ol.steps li { margin: 5px 0; }
+  .links { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+  .row { display: grid; grid-template-columns: 1fr 1.15fr; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
   .row:last-of-type { border-bottom: 0; }
-  label small { display: block; color: var(--ok); font-size: 12px; }
-  input, select { width: 100%; background: #08101a; border: 1px solid var(--line); color: var(--text);
-                  border-radius: 8px; padding: 8px 10px; font: inherit; }
-  button { margin-top: 14px; background: var(--accent); color: #031018; border: 0; border-radius: 8px; padding: 10px 18px;
-           font: inherit; font-weight: 600; cursor: pointer; }
-  #msg { margin-left: 12px; color: var(--ok); }
-  ol, ul { margin: 0; padding-left: 20px; } li { margin: 6px 0; }
-  code { background: #08101a; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
-  @media (max-width: 600px) { header, main { padding-left: 16px; padding-right: 16px; } .row { grid-template-columns: 1fr; gap: 4px; } }
+  label small { display: block; font-size: 12px; color: var(--ok); }
+  input, select { width: 100%; background: rgba(3,10,20,.8); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; outline: none; }
+  input:focus, select:focus { border-color: var(--accent); }
+  select option { background: var(--solid); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; background: rgba(56,217,255,.08); border: 1px solid var(--line2); border-radius: 10px;
+         padding: 8px 14px; cursor: pointer; text-decoration: none; color: var(--text); transition: .15s; }
+  .btn:hover { border-color: var(--accent); box-shadow: 0 0 16px rgba(56,217,255,.3); }
+  .btn.primary { background: linear-gradient(135deg, #38d9ff, #0a84ff); color: #02101e; border: 0; font-weight: 600; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+  .msg { font-size: 14px; } .msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); }
+  code { background: rgba(3,10,20,.8); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+  details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
+  @media (max-width: 640px) { main, header { padding-left: 16px; padding-right: 16px; } .row { grid-template-columns: 1fr; gap: 4px; } }
 </style>
 </head>
 <body>
-<header><h1>НАСТРОЙКИ</h1><a class="back" href="/">← Дашборд</a></header>
-<main>
-  <section>
-    <h2>Ключи, почта, голос</h2>
-    <form id="form"></form>
-  </section>
-
-  <section>
-    <h2>Доступы к компьютеру (Windows)</h2>
-    <ol>
-      <li><b>Микрофон.</b> Пуск → Параметры → Конфиденциальность и защита → Микрофон → включите
-        «Доступ к микрофону» и «Разрешить классическим приложениям доступ к микрофону».</li>
-      <li><b>Полный доступ (права администратора).</b> Без них Джарвис делает всё от вашего имени, но не может
-        управлять окнами, запущенными от администратора, и выполнять системные команды.
-        Чтобы дать полный доступ: правой кнопкой по <code>start_jarvis.bat</code> → «Запуск от имени администратора».</li>
-      <li><b>Без лишних вопросов.</b> В поле «Спрашивать да/нет…» выше выберите <code>false</code> — тогда выключение ПК,
-        удаление файлов, письма и команды терминала он будет выполнять сразу. Рекомендуем оставить <code>true</code>,
-        хотя бы первое время.</li>
-      <li><b>Почта.</b> Нужен не обычный пароль, а «пароль приложения»:
-        <a href="https://myaccount.google.com/apppasswords" target="_blank">Gmail</a> ·
-        <a href="https://id.yandex.ru/security/app-passwords" target="_blank">Яндекс</a> ·
-        Mail.ru: Настройки → Безопасность → Пароли для внешних приложений.</li>
-      <li><b>Файлы.</b> Джарвис видит все ваши папки (рабочий стол, загрузки, документы и любые другие) —
-        отдельно ничего давать не нужно.</li>
-      <li><b>Большие задачи через Claude Code.</b> Установите Claude Code (инструкция в README), и Джарвис сможет
-        поручать ему сложные задачи.</li>
-    </ol>
-  </section>
-</main>
+<header><h1>НАСТРОЙКИ</h1><span class="lead">Всё сохраняется сразу и применяется без перезапуска</span><a class="back" href="/">← Дашборд</a></header>
+<main id="main"><p class="lead">Загружаю…</p></main>
 <script>
 const TOKEN = "__TOKEN__";
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-async function load() {
-  const items = await fetch("/api/settings").then(r => r.json());
-  document.getElementById("form").innerHTML = items.map(it => {
-    const status = it.kind === "secret" ? `<small>${it.is_set ? "✓ задан (оставьте поле пустым, чтобы не менять)" : "не задан"}</small>` : "";
-    let field;
-    if (it.kind === "select") {
-      const opts = it.options.includes(it.value) || !it.value ? it.options : [it.value, ...it.options];
-      field = `<select name="${it.key}">${opts.map(o => `<option ${o === it.value ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
-    } else {
-      field = `<input name="${it.key}" type="${it.kind === "secret" ? "password" : "text"}" value="${esc(it.value)}"
-                placeholder="${esc(it.options)}" autocomplete="off">`;
-    }
-    return `<div class="row"><label>${esc(it.label)}${status}</label>${field}</div>`;
-  }).join("") + `<button>Сохранить</button><span id="msg"></span>`;
+const api = (u, o = {}) => fetch(u, {headers: {"Content-Type": "application/json", "X-Jarvis-Token": TOKEN}, ...o}).then(r => r.json());
+
+const GROUPS = [
+  {id: "brain", ic: "🧠", title: "Мозг: Claude Code и OpenAI", test: [["claude", "Проверить Claude Code"], ["openai", "Проверить OpenAI"]],
+   steps: [
+     "<b>Claude Code</b> (по подписке Claude): в папке Джарвиса дважды кликните <code>login_claude.bat</code> → в открывшемся окне <code>/login</code> → войдите в браузере → <code>/exit</code>. Потом нажмите «Проверить Claude Code».",
+     "<b>OpenAI</b> — запасной и быстрый мозг: вставьте ключ ниже (тот же, что у бота Витус) → «Проверить OpenAI».",
+     "Если Claude Code недоступен, Джарвис сам отвечает через OpenAI и раз в 10 минут пробует Claude снова.",
+     "Хотите быстрее — выберите «Чей мозг» → <code>openai</code> и модель <code>gpt-4.1-mini</code>; большие задачи Джарвис всё равно передаст Claude Code."],
+   links: [["https://platform.openai.com/api-keys", "Ключи OpenAI ↗"], ["https://claude.ai/settings", "Аккаунт Claude ↗"]]},
+  {id: "notion", ic: "🗂", title: "Notion", test: [["notion", "Проверить Notion"]],
+   steps: [
+     "Откройте страницу интеграций (кнопка ниже) → <b>New integration</b> → название «Джарвис», тип <b>Internal</b> → Save.",
+     "Скопируйте <b>Internal Integration Secret</b> (начинается с <code>ntn_</code>) и вставьте в поле ниже.",
+     "В Notion откройте базу <b>«Сводка задач»</b> → «•••» справа вверху → <b>Подключения</b> → найдите «Джарвис» → Подтвердить.",
+     "То же для страницы <b>«J.A.R.V.I.S. — общий штаб»</b> (она в «Навигаторе по пространству»).",
+     "Нажмите «Сохранить», потом «Проверить Notion»."],
+   links: [["https://www.notion.so/profile/integrations", "Интеграции Notion ↗"], ["https://www.notion.so/35e4ea9860c980be88d3f6d67aa0a4df", "Сводка задач ↗"], ["https://www.notion.so/3e84ea9860c981a7a7c5deaf8aafd8f8", "Общий штаб ↗"]]},
+  {id: "github", ic: "🐙", title: "GitHub", test: [["github", "Проверить GitHub"]],
+   steps: [
+     "Откройте создание токена (кнопка ниже). Token name: «Джарвис», Expiration — на ваш вкус (например, 1 год).",
+     "Repository access → <b>All repositories</b>.",
+     "Permissions → Repository permissions: <b>Contents</b>, <b>Pull requests</b>, <b>Issues</b>, <b>Actions</b> → <b>Read-only</b>.",
+     "Generate token → скопируйте (начинается с <code>github_pat_</code>) → вставьте ниже → «Сохранить» → «Проверить GitHub».",
+     "Потом скажите «Джарвис, скачай все репозитории» — и заработает «открой таймкодер в Курсоре»."],
+   links: [["https://github.com/settings/personal-access-tokens/new", "Создать токен ↗"]]},
+  {id: "email", ic: "📬", title: "Почта", test: [["email", "Проверить почту"]],
+   steps: [
+     "Обычный пароль не подойдёт — нужен <b>пароль приложения</b> (кнопки ниже).",
+     "<b>Gmail</b>: включите двухэтапную проверку → «Пароли приложений» → создайте → вставьте без пробелов.",
+     "<b>Яндекс</b>: «Пароли приложений» → Почта; в настройках Яндекс Почты включите доступ по IMAP.",
+     "<b>Mail.ru</b>: Настройки → Безопасность → «Пароли для внешних приложений».",
+     "Впишите адрес и пароль → «Сохранить» → «Проверить почту»."],
+   links: [["https://myaccount.google.com/apppasswords", "Gmail ↗"], ["https://id.yandex.ru/security/app-passwords", "Яндекс ↗"], ["https://account.mail.ru/user/2-step-auth/passwords", "Mail.ru ↗"]]},
+  {id: "voice", ic: "🎙", title: "Голос", test: [["voice", "Проверить голос"]],
+   steps: ["Если бесплатный голос Microsoft не отвечает — выберите первым <code>openai</code>: мужской голос дворецкого, стабильно (нужен ключ OpenAI).",
+           "Запасной голос Windows обычно женский — его можно выключить."], links: []},
+  {id: "look", ic: "✨", title: "Обращение, запуск и мониторы", test: [], steps: [], links: []},
+];
+
+async function badges() {
+  const links = await api("/api/integrations");
+  const by = {brain: "Claude Code", notion: "Notion", github: "GitHub", email: "Почта"};
+  for (const [g, name] of Object.entries(by)) {
+    const s = links.find(l => l.name === name), el = document.querySelector(`#g-${g} .state`);
+    if (s && el) { el.className = "state " + (s.ok ? "ok" : "bad"); el.textContent = s.ok ? "● подключено" : "○ " + s.note; }
+  }
 }
-document.getElementById("form").onsubmit = async e => {
+async function load() {
+  const items = await api("/api/settings");
+  const badge = g => ["brain", "notion", "github", "email"].includes(g.id) ? `<span class="state">…</span>` : "";
+  document.getElementById("main").innerHTML = GROUPS.map(g => `
+    <section id="g-${g.id}"><h2><span class="ic">${g.ic}</span>${g.title}${badge(g)}</h2>
+      ${g.steps.length ? `<ol class="steps">${g.steps.map(s => `<li>${s}</li>`).join("")}</ol>` : ""}
+      ${g.links.length ? `<div class="links">${g.links.map(([u, t]) => `<a class="btn" href="${u}" target="_blank">${t}</a>`).join("")}</div>` : ""}
+      <form data-g="${g.id}">
+        ${items.filter(i => i.group === g.id).map(field).join("")}
+        <div class="actions"><button class="btn primary">Сохранить</button>
+          ${g.test.map(([svc, t]) => `<button type="button" class="btn" onclick="test('${svc}', this)">${t}</button>`).join("")}
+          <span class="msg"></span></div>
+      </form>
+    </section>`).join("") + ACCESS;
+  document.querySelectorAll("form").forEach(f => f.onsubmit = save);
+  badges();
+  if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
+}
+function field(it) {
+  const status = it.kind === "secret" ? `<small>${it.is_set ? "✓ задан — оставьте пустым, чтобы не менять" : ""}</small>` : "";
+  let f;
+  if (it.kind === "select") {
+    const opts = it.options.includes(it.value) || !it.value ? it.options : [it.value, ...it.options];
+    f = `<select name="${it.key}">${opts.map(o => `<option ${o === it.value ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+  } else {
+    f = `<input name="${it.key}" type="${it.kind === "secret" ? "password" : "text"}" value="${esc(it.value)}" placeholder="${esc(it.options)}" autocomplete="off">`;
+  }
+  return `<div class="row"><label>${esc(it.label)}${status}</label>${f}</div>`;
+}
+async function save(e) {
   e.preventDefault();
-  const data = Object.fromEntries(new FormData(e.target).entries());
-  const r = await fetch("/api/settings", {method: "POST", body: JSON.stringify(data),
-    headers: {"Content-Type": "application/json", "X-Jarvis-Token": TOKEN}}).then(r => r.json());
-  document.getElementById("msg").textContent = r.message || "Ошибка";
-  load();
-};
+  const msg = e.target.querySelector(".msg");
+  const r = await api("/api/settings", {method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(e.target).entries()))});
+  msg.className = "msg ok"; msg.textContent = r.message || "Сохранено";
+  e.target.querySelectorAll('input[type=password]').forEach(i => { if (i.value) { i.value = "";
+    i.closest(".row").querySelector("small").textContent = "✓ задан — оставьте пустым, чтобы не менять"; } });
+  badges();
+}
+async function test(svc, btn) {
+  const msg = btn.parentElement.querySelector(".msg");
+  msg.className = "msg"; msg.textContent = "Проверяю…";
+  const r = await api(`/api/test/${svc}`, {method: "POST"});
+  msg.className = "msg " + (r.ok ? "ok" : "bad"); msg.textContent = (r.ok ? "✓ " : "✗ ") + r.message;
+  badges();
+}
+const ACCESS = `<section><h2><span class="ic">🛡</span>Доступы Windows</h2><ol class="steps">
+  <li><b>Микрофон:</b> Пуск → Параметры → Конфиденциальность и защита → Микрофон → включите доступ для классических приложений.</li>
+  <li><b>Полный доступ к компьютеру:</b> правой кнопкой по <code>start_jarvis.bat</code> → «Запуск от имени администратора».</li>
+  <li><b>Файлы:</b> Джарвис видит все ваши папки — отдельно ничего давать не нужно.</li>
+  <li><b>Cursor и Codex:</b> установите их и дважды кликните <code>connect_editors.bat</code>.</li>
+  <li><b>Обновление Джарвиса:</b> дважды кликните <code>update_jarvis.bat</code>.</li></ol></section>`;
 load();
 </script>
 </body>

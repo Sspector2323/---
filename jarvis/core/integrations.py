@@ -59,6 +59,17 @@ def connect_codex() -> str:
     return f"Codex: Джарвис прописан в {CODEX_CFG} и {CODEX_AGENTS}"
 
 
+def claude_item():
+    from .brain_claude_code import STATUS
+    installed = bool(find("claude"))
+    if not installed:
+        return ("Claude Code", False, "не установлен — login_claude.bat", "/settings#g-brain")
+    if STATUS["ok"] is False:
+        return ("Claude Code", False, STATUS["note"], "/settings#g-brain")
+    note = "мозг Джарвиса · " + STATUS["note"] if config.AI_PROVIDER == "claude_code" else "установлен"
+    return ("Claude Code", bool(STATUS["ok"]) or config.AI_PROVIDER != "claude_code", note, "https://claude.ai/code")
+
+
 def status() -> list[dict]:
     """Что подключено — для панели на дашборде."""
     from .tools import notion, github
@@ -72,16 +83,15 @@ def status() -> list[dict]:
 
     has_cursor, has_codex = bool(editor_exe("cursor")), bool(find("codex"))
     items = [
-        ("Claude Code", bool(find("claude")), "мозг Джарвиса" if config.AI_PROVIDER == "claude_code" else "установлен",
-         "https://claude.ai/code"),
+        claude_item(),
         ("Cursor", has_cursor and cursor_cfg, editor_note(has_cursor, cursor_cfg), "https://cursor.com"),
         ("Codex", has_codex and codex_cfg, editor_note(has_codex, codex_cfg), "https://developers.openai.com/codex"),
         ("VS Code", bool(editor_exe("vscode")), "установлен" if editor_exe("vscode") else "не установлен",
          "https://code.visualstudio.com"),
-        ("Notion", notion.enabled(), "подключён" if notion.enabled() else "нужен секрет в настройках", "/settings"),
-        ("GitHub", github.enabled(), "подключён" if github.enabled() else "нужен токен в настройках", "/settings"),
+        ("Notion", notion.enabled(), "подключён" if notion.enabled() else "нажмите, чтобы подключить", "/settings#g-notion"),
+        ("GitHub", github.enabled(), "подключён" if github.enabled() else "нажмите, чтобы подключить", "/settings#g-github"),
         ("Почта", bool(config.EMAIL_ADDRESS and config.EMAIL_PASSWORD),
-         config.EMAIL_ADDRESS or "не настроена", "/settings"),
+         config.EMAIL_ADDRESS or "нажмите, чтобы подключить", "/settings#g-email"),
     ]
     return [{"name": n, "ok": ok, "note": note, "url": url} for n, ok, note, url in items]
 

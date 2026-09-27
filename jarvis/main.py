@@ -12,6 +12,7 @@ import time
 import webbrowser
 
 from core import config, dashboard
+from core import fillers
 from core.quick import try_quick
 from core.tools.tasks import due_reminders
 
@@ -26,6 +27,22 @@ def strip_wake(text: str) -> str | None:
         if w in low:
             return re.sub(rf"\b{re.escape(w)}\b[,!.]?", "", text, flags=re.I).strip(" ,.!")
     return None
+
+
+def ask_with_fillers(io, ask, command: str) -> str:
+    """Пока мозг думает, Джарвис не молчит: сразу — фраза по теме, дальше — изредка фразы ожидания."""
+    box = {}
+    worker = threading.Thread(target=lambda: box.update(answer=ask(command)), daemon=True)
+    worker.start()
+    worker.join(1.0)  # быстрые ответы — без перебивок
+    if worker.is_alive() and not io.confirming:
+        io.say(fillers.first(command, config.USER_NAME), cache=True, quiet=True)
+    waits = fillers.waiting(config.USER_NAME)
+    while worker.is_alive():
+        worker.join(7.0)
+        if worker.is_alive() and not io.confirming:
+            io.say(next(waits), cache=True, quiet=True)
+    return box.get("answer", "Готово.")
 
 
 def reminder_loop(io):
@@ -90,7 +107,7 @@ def main():
         with lock:
             return brain.ask(text)
 
-    dashboard.BRAIN.update(ask=ask, confirm=io.confirm)
+    dashboard.BRAIN.update(ask=ask, confirm=io.confirm, say=io.say)
     threading.Thread(target=reminder_loop, args=(io,), daemon=True).start()
     print(f"📊 Дашборд: {url}")
 
@@ -104,6 +121,9 @@ def main():
             time.sleep(0.1)
         if brief_box.get("text"):
             io.say(brief_box["text"])
+    # фразы-перебивки озвучиваем заранее, в фоне — потом они звучат без задержки
+    threading.Thread(target=io.prewarm, args=([p.format(user=config.USER_NAME) for p in fillers.ALL],),
+                     daemon=True).start()
     if want_dash and how != "native":  # окна Windows открывают дашборды сами; иначе — в браузере после анимации
         threading.Timer(max(0.0, 9.5 - (time.time() - t_start)), webbrowser.open, [url]).start()
 
@@ -142,7 +162,7 @@ def main():
         t0 = time.time()
         answer = try_quick(command)
         if answer is None:
-            answer = ask(command)
+            answer = ask_with_fillers(io, ask, command)
             print(f"  ⏱ мозг думал {time.time() - t0:.1f} с")
         if answer:
             t1 = time.time()

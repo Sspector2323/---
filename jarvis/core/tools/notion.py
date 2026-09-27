@@ -18,6 +18,8 @@ def _req(method: str, path: str, **kw) -> dict:
         raise RuntimeError("Notion не подключён: вставьте NOTION_TOKEN в ⚙ Настройках")
     r = requests.request(method, API + path, timeout=20, headers={
         "Authorization": f"Bearer {config.NOTION_TOKEN}", "Notion-Version": "2022-06-28"}, **kw)
+    if r.status_code == 401:
+        raise RuntimeError("Notion не принял секрет — скопируйте Internal Integration Secret целиком ещё раз")
     if r.status_code == 404:
         raise RuntimeError("Notion не видит страницу/базу: откройте её в Notion → ••• → Подключения → добавьте интеграцию Джарвиса")
     r.raise_for_status()
