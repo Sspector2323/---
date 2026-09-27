@@ -79,7 +79,7 @@ SECRET_KEYS = {k for k, _, kind, *_ in SETTINGS if kind == "secret"}
 def _read_env() -> dict:
     values = {}
     if ENV_PATH.exists():
-        for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+        for line in ENV_PATH.read_text(encoding="utf-8-sig").splitlines():
             if "=" in line and not line.lstrip().startswith("#"):
                 k, v = line.split("=", 1)
                 values[k.strip()] = v.strip()
@@ -174,6 +174,12 @@ def _apply_live(updates: dict):
 @app.post("/api/test/<svc>")
 def test_service(svc: str):
     """Кнопка «Проверить» в настройках."""
+    ok, message = run_test(svc)
+    return jsonify(ok=ok, message=message)
+
+
+def run_test(svc: str) -> tuple[bool, str]:
+    """Проверка одного сервиса: (всё ли хорошо, понятное сообщение). Используется и в check_jarvis.bat."""
     try:
         if svc == "notion":
             from .tools import notion
@@ -201,7 +207,7 @@ def test_service(svc: str):
             from .brain_claude_code import check
             st = check()
             if not st["ok"]:
-                return jsonify(ok=False, message=f"Claude Code: {st['note']}")
+                return False, f"Claude Code: {st['note']}"
             msg = "Claude Code на связи: вход выполнен."
         elif svc == "voice":
             BRAIN_SAY = BRAIN.get("say")
@@ -209,17 +215,19 @@ def test_service(svc: str):
                 BRAIN_SAY(f"Проверка голоса. К вашим услугам, {config.USER_NAME}.")
             msg = "Голос проверен — вы должны были его услышать."
         else:
-            return jsonify(ok=False, message="Неизвестный сервис")
-        return jsonify(ok=True, message=msg)
+            return False, "Неизвестный сервис"
+        return True, msg
     except Exception as e:  # noqa: BLE001
         text = str(e)
         if "ProxyError" in type(e).__name__ or "Connection" in type(e).__name__ or "Max retries" in text:
             text = "нет связи с сервисом — проверьте интернет или VPN"
         elif "AUTHENTICATIONFAILED" in text.upper() or "LOGIN" in text.upper() and "fail" in text.lower():
             text = "почта не приняла пароль — нужен именно пароль приложения, и включён IMAP"
+        elif "403" in text and "github" in text:
+            text = "GitHub не пускает — у токена нет доступа: выберите All repositories и права Read-only"
         elif "AuthenticationError" in type(e).__name__ or "401" in text:
             text = "ключ не подходит — скопируйте его ещё раз целиком"
-        return jsonify(ok=False, message=text[:300])
+        return False, text[:300]
 
 
 @app.get("/api/state")

@@ -90,15 +90,23 @@ const GROUPS = [
 ];
 
 async function badges() {
-  const links = await api("/api/integrations");
+  let links; try { links = await api("/api/integrations"); } catch { return; }
   const by = {brain: "Claude Code", notion: "Notion", github: "GitHub", email: "Почта"};
   for (const [g, name] of Object.entries(by)) {
     const s = links.find(l => l.name === name), el = document.querySelector(`#g-${g} .state`);
     if (s && el) { el.className = "state " + (s.ok ? "ok" : "bad"); el.textContent = s.ok ? "● подключено" : "○ " + s.note; }
   }
 }
+const OLD = `<p class="msg bad">Джарвис запущен в старой версии — закройте его чёрное окно и запустите start_jarvis.bat заново.</p>`;
 async function load() {
   const items = await api("/api/settings");
+  if (!items.length || !("group" in items[0])) {
+    // программа старее этой страницы: показываем все поля одним списком и просим перезапуск
+    document.getElementById("main").innerHTML = `<section><h2><span class="ic">⚙</span>Все настройки</h2>${OLD}
+      <form data-g="all">${items.map(field).join("")}<div class="actions"><button class="btn primary">Сохранить</button><span class="msg"></span></div></form></section>`;
+    document.querySelector("form").onsubmit = save;
+    return;
+  }
   const badge = g => ["brain", "notion", "github", "email"].includes(g.id) ? `<span class="state">…</span>` : "";
   document.getElementById("main").innerHTML = GROUPS.map(g => `
     <section id="g-${g.id}"><h2><span class="ic">${g.ic}</span>${g.title}${badge(g)}</h2>
@@ -138,7 +146,9 @@ async function save(e) {
 async function test(svc, btn) {
   const msg = btn.parentElement.querySelector(".msg");
   msg.className = "msg"; msg.textContent = "Проверяю…";
-  const r = await api(`/api/test/${svc}`, {method: "POST"});
+  let r;
+  try { r = await api(`/api/test/${svc}`, {method: "POST"}); }
+  catch { msg.className = "msg bad"; msg.innerHTML = "✗ Джарвис запущен в старой версии — перезапустите start_jarvis.bat"; return; }
   msg.className = "msg " + (r.ok ? "ok" : "bad"); msg.textContent = (r.ok ? "✓ " : "✗ ") + r.message;
   badges();
 }

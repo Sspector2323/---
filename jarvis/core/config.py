@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")  # без рекламной строки pygame в окне
 
 ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT / ".env")
+load_dotenv(ROOT / ".env", encoding="utf-8-sig")  # -sig: Блокнот иногда сохраняет с BOM
 
 DATA_DIR = ROOT / "data"
 DATA_DIR.mkdir(exist_ok=True)
