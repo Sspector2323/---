@@ -29,7 +29,7 @@ SAFE_BUILTIN = ["Read", "Glob", "Grep", "WebSearch", "WebFetch", "TodoWrite"]
 
 
 # Состояние Claude Code для дашборда: ok=True/False/None (ещё не проверяли)
-STATUS = {"ok": None, "note": "проверяю…"}
+STATUS = {"ok": None, "note": "проверяю…", "detail": ""}
 AUTH_WORDS = ("401", "authenticat", "oauth", "log in", "login", "not logged", "invalid api key")
 
 
@@ -53,10 +53,22 @@ def check(exe: str | None = None) -> dict:
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90,
                            env=_clean_env(), cwd=Path.home())
         out = (r.stdout or "") + (r.stderr or "")
-        data = json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else {}
+        try:
+            data = json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else {}
+        except json.JSONDecodeError:
+            data = {}
+        import re as _re
+        STATUS["detail"] = _re.sub(r"\x1b\[[0-9;]*m", "", (data.get("result") if data else "") or out).strip()[-400:]
+        low = out.lower()
+        region = any(w in low for w in ("not available in your", "unsupported_country", "region", "country"))
+        forbidden = "403" in low or "forbidden" in low or "permission" in low
         if data and not data.get("is_error"):
             STATUS.update(ok=True, note="на связи")
-        elif any(w in out.lower() for w in AUTH_WORDS):
+        elif region:
+            STATUS.update(ok=False, note="Anthropic не пускает из вашего региона — включите VPN в режиме TUN (для всех программ)")
+        elif forbidden:
+            STATUS.update(ok=False, note="доступ запрещён (403): нужен VPN для всех программ или подписка Pro/Max")
+        elif any(w in low for w in AUTH_WORDS):
             STATUS.update(ok=False, note="не выполнен вход — login_claude.bat")
         else:
             STATUS.update(ok=False, note=(data.get("result") or out or "не отвечает")[:80])

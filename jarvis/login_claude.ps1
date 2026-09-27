@@ -25,3 +25,24 @@ Write-Host "  1. Наберите  /login  и нажмите Enter — откр�
 Write-Host "  2. Когда вход завершится, наберите  /exit  и закройте окно."
 Write-Host ""
 & $exe
+
+Write-Host ""
+Write-Host "Проверяю, работает ли Claude Code..." -ForegroundColor Cyan
+$env:ANTHROPIC_API_KEY = $null
+$out = & $exe -p "Ответь одним словом: ок" --output-format json 2>&1 | Out-String
+try { $j = ($out.Trim() -split "`n")[-1] | ConvertFrom-Json } catch { $j = $null }
+if ($j -and -not $j.is_error) {
+    Write-Host "✅ Claude Code работает! Можно запускать Джарвиса." -ForegroundColor Green
+} else {
+    Write-Host "❌ Claude Code не работает. Вот что он ответил:" -ForegroundColor Red
+    Write-Host $out
+    $low = $out.ToLower()
+    if ($low -match "country|region|not available") {
+        Write-Host "→ Anthropic не пускает из вашего региона. Включите VPN в режиме TUN / «для всех приложений» и запустите этот файл снова." -ForegroundColor Yellow
+    } elseif ($low -match "403|forbidden") {
+        Write-Host "→ Доступ запрещён: либо VPN не охватывает программы (нужен режим TUN), либо на аккаунте нет подписки Pro/Max." -ForegroundColor Yellow
+    } elseif ($low -match "401|login|auth") {
+        Write-Host "→ Вход не сохранился. Запустите этот файл ещё раз и в окне Claude наберите /login." -ForegroundColor Yellow
+    }
+    Write-Host "Сфотографируйте это окно и пришлите Claude."
+}

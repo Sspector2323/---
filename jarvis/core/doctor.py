@@ -107,6 +107,12 @@ def main():
         print(f"  … {name}", end="\r", flush=True)
         ok, msg = run_test(svc)
         print(f"  {OK if ok else BAD} {name}: {re.sub(r'^(Claude Code: )', '', msg)}")
+        if svc == "claude" and not ok:
+            from .brain_claude_code import STATUS
+            if STATUS.get("detail"):
+                print("     Что ответил сам Claude Code:")
+                for ln in STATUS["detail"].splitlines()[-6:]:
+                    print("     │ " + ln[:110])
 
     print("\n— Голос —")
     try:
