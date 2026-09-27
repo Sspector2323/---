@@ -15,7 +15,7 @@ WEB = __import__("pathlib").Path(__file__).parent / "web"
 app = Flask(__name__)
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
-BRAIN = {"ask": None}
+BRAIN = {"ask": None, "confirm": None}
 _ask_lock = threading.Lock()
 
 # Секрет этого запуска: без него дашборд не примет изменения. Чужие сайты, открытые в том же
@@ -41,7 +41,8 @@ def _page(name: str):
 ENV_PATH = config.ROOT / ".env"
 SETTINGS = [
     # (ключ, подпись, тип, варианты/подсказка)
-    ("AI_PROVIDER", "Чей мозг", "select", ["openai", "claude"]),
+    ("AI_PROVIDER", "Чей мозг", "select", ["claude_code", "openai", "claude"]),
+    ("CLAUDE_CODE_MODEL", "Модель Claude Code (пусто = по подписке; sonnet/haiku — быстрее)", "text", "sonnet"),
     ("OPENAI_API_KEY", "Ключ OpenAI", "secret", "sk-…"),
     ("OPENAI_MODEL", "Модель OpenAI", "select", ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o"]),
     ("ANTHROPIC_API_KEY", "Ключ Claude", "secret", "sk-ant-…"),
@@ -168,8 +169,17 @@ def ask():
         return jsonify(answer=BRAIN["ask"](text))
 
 
-def start(ask_fn=None):
+@app.post("/api/confirm")
+def confirm():
+    """Claude Code (через MCP-сервер) спрашивает разрешение — задаём вопрос голосом."""
+    fn = BRAIN["confirm"]
+    question = request.get_json(force=True).get("question", "")
+    return jsonify(ok=bool(fn and fn(question)))
+
+
+def start(ask_fn=None, confirm_fn=None):
     BRAIN["ask"] = ask_fn
+    BRAIN["confirm"] = confirm_fn
     threading.Thread(target=lambda: app.run(host="127.0.0.1", port=config.DASHBOARD_PORT, use_reloader=False),
                      daemon=True).start()
     return f"http://localhost:{config.DASHBOARD_PORT}"

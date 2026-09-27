@@ -15,10 +15,12 @@ def _bool(name: str, default: bool) -> bool:
     return os.getenv(name, str(default)).strip().lower() in ("1", "true", "yes", "да")
 
 
-# Чей мозг: openai (GPT) или claude
+# Чей мозг: openai (GPT), claude (Claude API) или claude_code (Claude Code на этом ПК, по подписке)
 AI_PROVIDER = os.getenv("AI_PROVIDER", "openai").strip().lower()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1")
 MODEL = os.getenv("JARVIS_MODEL", "claude-opus-5")
+# Для claude_code: пусто = модель по умолчанию из подписки; sonnet/haiku — быстрее
+CLAUDE_CODE_MODEL = os.getenv("CLAUDE_CODE_MODEL", "").strip()
 EFFORT = os.getenv("JARVIS_EFFORT", "low")
 
 WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "джарвис,jarvis").split(",") if w.strip()]

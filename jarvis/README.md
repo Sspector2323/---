@@ -78,6 +78,25 @@ curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del in
 
 ---
 
+## Часть 3. Связать Джарвиса с Claude Code (рекомендуется)
+
+В этом режиме мозг Джарвиса — **Claude Code на вашем компьютере**. Голосовая оболочка остаётся та же, а думает и действует Claude. Ключ API не нужен, всё идёт по подписке Claude Pro/Max.
+
+1. Установите Claude Code и войдите в аккаунт (Часть 2). Проверка: в PowerShell `claude --version` показывает версию.
+2. В дашборде откройте **⚙ Настройки** → «Чей мозг» → `claude_code` → Сохранить.
+3. Перезапустите Джарвиса.
+
+Что умеет Claude в этом режиме:
+- **все умения Джарвиса**: дела, напоминания, почта, звук, музыка, программы, выключение ПК. Они подключены к Claude Code как инструменты (MCP);
+- **свои умения Claude Code**: читать и править любые файлы, выполнять команды, искать в интернете, писать программы;
+- **помнит разговор**, пока вы не скажете «новый диалог».
+
+Безопасность: читать файлы и искать в интернете Claude может без вопросов. Перед командами терминала, записью файлов, выключением ПК или отправкой писем Джарвис спросит вас голосом «да или нет». Отключается в ⚙ Настройках.
+
+Модель: пусто — по умолчанию из подписки. Если хочется быстрее, впишите `sonnet` или `haiku` в «Модель Claude Code». Простая команда обычно занимает 4–10 секунд. Мгновенные команды (время, громкость, пауза) по-прежнему выполняются сразу.
+
+---
+
 ## Как это устроено
 
 ```
@@ -91,7 +110,8 @@ curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del in
 | Файл | Что внутри |
 |---|---|
 | `main.py` | запуск, голосовой цикл, слово-активатор, напоминания |
-| `core/brain_openai.py`, `core/brain.py` | мозг на OpenAI и на Claude: цикл вызова инструментов |
+| `core/brain_claude_code.py`, `core/mcp_server.py` | мозг = Claude Code; умения Джарвиса для него (MCP) |
+| `core/brain_openai.py`, `core/brain.py` | мозг на OpenAI и на Claude API: цикл вызова инструментов |
 | `core/voice.py` | слух и голос |
 | `core/tools/*.py` | умения: `system` (ПК), `files`, `tasks` (дела), `mail`, `info`, `claude_code` |
 | `core/dashboard.py`, `core/web/index.html` | дашборд |
@@ -102,7 +122,8 @@ curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del in
 ### Настройки `.env`
 | Параметр | Что делает |
 |---|---|
-| `AI_PROVIDER` | `openai` (по умолчанию) или `claude` |
+| `AI_PROVIDER` | `claude_code` (Claude Code по подписке), `openai` или `claude` (API) |
+| `CLAUDE_CODE_MODEL` | модель для `claude_code`: пусто = по подписке, `sonnet`/`haiku` — быстрее |
 | `OPENAI_MODEL` | модель GPT: `gpt-4.1` (по умолчанию) или дешевле `gpt-4.1-mini` |
 | `JARVIS_MODEL` | модель Claude, если выбран Claude (по умолчанию `claude-opus-5`) |
 | `JARVIS_EFFORT` | для Claude: `low` — быстрые ответы (по умолчанию), `medium`/`high` — глубже думает, но медленнее |

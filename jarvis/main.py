@@ -37,8 +37,8 @@ def reminder_loop(io):
 
 def main():
     text_mode = "--text" in sys.argv
-    key = "OPENAI_API_KEY" if config.AI_PROVIDER == "openai" else "ANTHROPIC_API_KEY"
-    if not os.getenv(key):
+    key = {"openai": "OPENAI_API_KEY", "claude": "ANTHROPIC_API_KEY"}.get(config.AI_PROVIDER)
+    if key and not os.getenv(key):
         print(f"❌ Не найден {key}. Откройте файл .env и вставьте ключ.")
         sys.exit(1)
 
@@ -50,18 +50,24 @@ def main():
         print("🎙 Настраиваю микрофон…")
         io = Voice()
 
-    if config.AI_PROVIDER == "openai":
+    if config.AI_PROVIDER == "claude_code":
+        from core.brain_claude_code import ClaudeCodeBrain as Brain
+    elif config.AI_PROVIDER == "openai":
         from core.brain_openai import OpenAIBrain as Brain
     else:
         from core.brain import Brain
-    brain = Brain(confirm=io.confirm, on_status=lambda s: print("  " + s))
+    try:
+        brain = Brain(confirm=io.confirm, on_status=lambda s: print("  " + s))
+    except RuntimeError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
     lock = threading.Lock()
 
     def ask(text: str) -> str:
         with lock:
             return brain.ask(text)
 
-    url = dashboard.start(ask)
+    url = dashboard.start(ask, io.confirm)
     threading.Thread(target=reminder_loop, args=(io,), daemon=True).start()
     if "--no-browser" not in sys.argv:
         webbrowser.open(url)
