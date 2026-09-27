@@ -45,10 +45,13 @@ def main():
     # Дашборд и анимация стартуют первыми — пока идёт анимация, настраиваются микрофон и мозг
     t_start = time.time()
     url = dashboard.start()
+    from core import intro
     intro_on = config.INTRO_ANIMATION and "--no-intro" not in sys.argv
-    if intro_on:
-        from core import intro
-        intro_on = intro.launch(url)
+    want_dash = "--no-browser" not in sys.argv and config.DASHBOARD_SCREENS != "off"
+    how = intro.launch(url, with_dashboards=want_dash) if intro_on else None
+    if not intro_on and want_dash and intro.launch_native(url, "dash"):
+        how = "native"
+    intro_on = bool(how) and intro_on
     brief_box = {}
     if config.MORNING_BRIEF:
         from core.briefing import brief
@@ -101,7 +104,7 @@ def main():
             time.sleep(0.1)
         if brief_box.get("text"):
             io.say(brief_box["text"])
-    if "--no-browser" not in sys.argv:  # дашборд — после анимации, чтобы не перекрыть её
+    if want_dash and how != "native":  # окна Windows открывают дашборды сами; иначе — в браузере после анимации
         threading.Timer(max(0.0, 9.5 - (time.time() - t_start)), webbrowser.open, [url]).start()
 
     follow_up_until = 0.0  # несколько секунд после ответа можно говорить без слова «Джарвис»

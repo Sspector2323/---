@@ -226,10 +226,11 @@ function frame(now) {
   }
   if (P.has("freeze")) return;  // стоп-кадр для предпросмотра
   if (t < END) requestAnimationFrame(frame);
-  else if (!closing) { closing = true; window.close(); }
+  else if (!closing) { closing = true; finish(); }
 }
 document.getElementById("fade").style.opacity = 0;
-addEventListener("click", () => window.close()); addEventListener("keydown", () => window.close());
+function finish() { if (window.pywebview && pywebview.api) pywebview.api.skip(); else window.close(); }
+addEventListener("click", finish); addEventListener("keydown", finish);
 (document.fonts ? document.fonts.ready : Promise.resolve()).finally(() => requestAnimationFrame(frame));
 </script>
 </body>

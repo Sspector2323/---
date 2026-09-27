@@ -57,31 +57,55 @@ class Voice:
             return None
 
     # ---------- Голос ----------
+    # Порядок: edge (бесплатный голос Microsoft) → openai (платный, стабильный, если есть ключ) → голос Windows.
+    # Движок, который не ответил, пропускаем 10 минут — чтобы не ждать его на каждой фразе.
+    _down: dict = {}
+
+    def _engines(self) -> list[str]:
+        pref = config.TTS_ENGINE
+        order = {"edge": ["edge", "openai"], "openai": ["openai", "edge"]}.get(pref, ["edge", "openai"])
+        return [e for e in order if not (e == "openai" and not os.getenv("OPENAI_API_KEY"))
+                and self._down.get(e, 0) < time.time()]
+
     def say(self, text: str):
         print(f"🤖 Джарвис: {text}")
         if not text:
             return
         with self.lock:
-            # Основной голос (TTS_VOICE) — онлайн-сервис Microsoft. Он иногда не отвечает с первого раза,
-            # поэтому пробуем трижды и только потом включаем запасной голос Windows.
-            for attempt in range(3):
+            for engine in self._engines():
                 try:
-                    self._say_edge(text)
+                    self._play(getattr(self, f"_synth_{engine}")(text))
                     return
                 except Exception as e:  # noqa: BLE001
-                    err = e
-                    time.sleep(0.3 * (attempt + 1))
-            print(f"⚠ Основной голос недоступен ({type(err).__name__}: {err}). Говорю запасным голосом Windows.")
+                    self._down[engine] = time.time() + 600
+                    print(f"⚠ Голос {engine} недоступен ({type(e).__name__}: {str(e)[:120]}) — пробую следующий.")
             if config.OFFLINE_VOICE:
                 self._say_offline(text)
 
-    def _say_edge(self, text: str):
+    def _synth_edge(self, text: str) -> str:
         import edge_tts
-        import pygame
         fd, path = tempfile.mkstemp(suffix=".mp3")
         os.close(fd)
+        asyncio.run(edge_tts.Communicate(text, config.TTS_VOICE, rate="+8%").save(path))
+        if os.path.getsize(path) == 0:
+            raise RuntimeError("пустой звук")
+        return path
+
+    def _synth_openai(self, text: str) -> str:
+        import openai
+        fd, path = tempfile.mkstemp(suffix=".mp3")
+        os.close(fd)
+        client = self.__dict__.setdefault("_openai", openai.OpenAI())
+        with client.audio.speech.with_streaming_response.create(
+                model="gpt-4o-mini-tts", voice=config.OPENAI_VOICE, input=text, response_format="mp3",
+                instructions="Говори по-русски спокойным, учтивым, слегка торжественным голосом британского дворецкого.",
+        ) as r:
+            r.stream_to_file(path)
+        return path
+
+    def _play(self, path: str):
+        import pygame
         try:
-            asyncio.run(edge_tts.Communicate(text, config.TTS_VOICE, rate="+8%").save(path))
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
             pygame.mixer.music.load(path)

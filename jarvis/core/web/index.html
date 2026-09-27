@@ -181,6 +181,16 @@
 
   ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; }
 
+  /* Раскладка по мониторам: ?view=work (левый) / ?view=life (правый) */
+  body.side .command, body.side .actions { display: none; }
+  body.view-work .card:not([data-v="work"]), body.view-life .card:not([data-v="life"]) { display: none; }
+  body.side .card { grid-column: span 6; }
+  body.side .card.w8, body.side .card.w12 { grid-column: span 12; }
+  body.side ul.list { max-height: 46vh; }
+  body.side .log { max-height: 60vh; }
+  .viewtag { font: 500 12px Orbitron, sans-serif; letter-spacing: 3px; color: var(--muted); border: 1px solid var(--line);
+             border-radius: 999px; padding: 4px 12px; display: none; }
+  body.side .viewtag { display: inline-block; }
   @media (max-width: 1280px) { .card, .w3, .w5 { grid-column: span 6; } .w7, .w8 { grid-column: span 12; } }
   @media (max-width: 860px) {
     header.top { display: flex; flex-wrap: wrap; gap: 12px; } .spacer { display: none; }
@@ -203,7 +213,7 @@
         <div class="greet" id="greet">Моё почтение<small id="subgreet">Я к вашим услугам</small></div>
       </div>
     </div>
-    <div class="spacer"></div>
+    <div class="spacer"><span class="viewtag" id="viewtag"></span></div>
     <div class="weather" id="weather" title="Обновить погоду"><span class="ic">⛅</span><div><div class="t">—</div><div class="muted">погода</div></div></div>
     <div class="clock" id="clockBox" title="Сводка дня"><div id="time">--:--</div><div id="date"></div></div>
     <a class="icon-btn" href="/settings" title="Настройки и доступы">⚙</a>
@@ -222,41 +232,41 @@
   <section class="actions" id="actions"></section>
 
   <main class="grid">
-    <section class="card w5">
+    <section data-v="work" class="card w5">
       <h2>Система <span class="right muted" id="uptime"></span></h2>
       <div class="rings" id="rings"></div>
       <div class="spark" id="spark"><svg viewBox="0 0 300 64" preserveAspectRatio="none"></svg><div class="tip"></div>
         <div class="muted">Загрузка процессора, последние 5 минут</div></div>
     </section>
-    <section class="card w3"><h2>Подключения</h2><div class="links" id="links"></div></section>
-    <section class="card"><h2>Сегодня <span class="count" id="tcount">0</span></h2><ul class="list" id="tasks"></ul>
+    <section data-v="work" class="card w3"><h2>Подключения</h2><div class="links" id="links"></div></section>
+    <section data-v="life" class="card"><h2>Сегодня <span class="count" id="tcount">0</span></h2><ul class="list" id="tasks"></ul>
       <form class="add" id="taskForm"><input type="text" id="taskTitle" placeholder="Новое дело">
         <select id="taskPrio"><option>обычный</option><option>высокий</option><option>низкий</option></select>
         <button class="btn sm">+</button></form></section>
 
-    <section class="card w8"><h2>Проекты · GitHub <span class="count" id="rcount">0</span>
+    <section data-v="work" class="card w8"><h2>Проекты · GitHub <span class="count" id="rcount">0</span>
       <span class="right"><button class="btn sm" onclick="syncRepos()">⬇ Скачать / обновить все</button></span></h2>
       <div class="repos" id="repos"><div class="empty">Загружаю…</div></div></section>
-    <section class="card"><h2>Claude в облаке</h2><ul class="list" id="cloud"><li class="empty">Загружаю…</li></ul></section>
+    <section data-v="work" class="card"><h2>Claude в облаке</h2><ul class="list" id="cloud"><li class="empty">Загружаю…</li></ul></section>
 
-    <section class="card w6"><h2>Notion · Сводка задач <span class="count" id="ncount">0</span><a class="right" id="nlink" target="_blank"></a></h2>
+    <section data-v="work" class="card w6"><h2>Notion · Сводка задач <span class="count" id="ncount">0</span><a class="right" id="nlink" target="_blank"></a></h2>
       <ul class="list" id="notion"><li class="empty">Загружаю…</li></ul>
       <form class="add" id="notionForm"><input type="text" id="nTitle" placeholder="Новая задача в Notion">
         <select id="nPrio"><option value="High">High</option><option value="Medium" selected>Medium</option><option value="Low">Low</option></select>
         <button class="btn sm">+ в Notion</button></form></section>
-    <section class="card w6"><h2>Почта <span class="count" id="mcount">0</span><span class="right"><button class="btn sm" onclick="checkMail()">↻ Проверить</button></span></h2>
+    <section data-v="life" class="card w6"><h2>Почта <span class="count" id="mcount">0</span><span class="right"><button class="btn sm" onclick="checkMail()">↻ Проверить</button></span></h2>
       <ul class="list" id="mail"></ul></section>
 
-    <section class="card"><h2>Напоминания</h2><ul class="list" id="reminders"></ul>
+    <section data-v="life" class="card"><h2>Напоминания</h2><ul class="list" id="reminders"></ul>
       <form class="add" id="remForm"><input type="text" id="remText" placeholder="О чём напомнить">
         <input type="datetime-local" id="remAt"><button class="btn sm">+</button></form></section>
-    <section class="card"><h2>Заметки</h2><ul class="list" id="notes"></ul>
+    <section data-v="life" class="card"><h2>Заметки</h2><ul class="list" id="notes"></ul>
       <form class="add" id="noteForm"><input type="text" id="noteText" placeholder="Записать мысль"><button class="btn sm">+</button></form></section>
-    <section class="card"><h2>Джарвис помнит</h2><ul class="list" id="memory"></ul>
+    <section data-v="life" class="card"><h2>Джарвис помнит</h2><ul class="list" id="memory"></ul>
       <form class="add" id="memForm"><input type="text" id="memKey" placeholder="О чём" style="flex:1 1 90px">
         <input type="text" id="memVal" placeholder="Что запомнить"><button class="btn sm">+</button></form></section>
 
-    <section class="card w12"><h2>Журнал разговора</h2><div class="log" id="log"></div></section>
+    <section data-v="life" class="card w12"><h2>Журнал разговора</h2><div class="log" id="log"></div></section>
   </main>
 </div>
 
@@ -265,6 +275,11 @@
 
 <script>
 const TOKEN = "__TOKEN__";
+const VIEW = new URLSearchParams(location.search).get("view") || "all";
+if (VIEW !== "all") {
+  document.body.classList.add("side", "view-" + VIEW);
+  document.getElementById("viewtag").textContent = VIEW === "work" ? "РАБОТА" : "ЛИЧНОЕ";
+}
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const api = (url, opts = {}) => fetch(url, {headers: {"Content-Type": "application/json", "X-Jarvis-Token": TOKEN}, ...opts}).then(r => r.json());

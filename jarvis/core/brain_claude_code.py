@@ -5,6 +5,7 @@
 а ответ Джарвис произносит голосом. Разговор продолжается в одной сессии Claude Code.
 """
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -36,11 +37,24 @@ class ClaudeCodeBrain:
         from .tools import load_all
         self.tools = load_all()
         self.on_status = on_status
+        self.confirm = confirm
         self.session_id: str | None = None
         self.cwd = Path.home()
 
     def reset(self):
         self.session_id = None
+
+    def _fallback(self, text: str, problem: str) -> str:
+        """Claude Code недоступен — отвечаем мозгом OpenAI (если есть ключ) и один раз говорим, что чинить."""
+        if not os.getenv("OPENAI_API_KEY"):
+            storage.log("jarvis", problem)
+            return problem
+        if not hasattr(self, "_backup"):
+            from .brain_openai import OpenAIBrain
+            self._backup = OpenAIBrain(confirm=self.confirm, on_status=self.on_status)
+            answer = self._backup.ask(text)
+            return f"{problem} Пока отвечаю через OpenAI. {answer}"
+        return self._backup.ask(text)
 
     def _mcp_config(self) -> str:
         return json.dumps({"mcpServers": {"jarvis": {
@@ -71,8 +85,13 @@ class ClaudeCodeBrain:
             cmd += ["--resume", self.session_id]
         self.on_status("⚙ передаю Claude Code…")
         try:
+            # пустые ANTHROPIC_* из .env не передаём: Claude Code должен входить по подписке
+            env = {k: v for k, v in os.environ.items()
+                   if not (k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN") and not v.strip())}
+            if config.AI_PROVIDER == "claude_code":
+                env.pop("ANTHROPIC_API_KEY", None)  # иначе Claude Code возьмёт платный ключ вместо подписки
             r = subprocess.run(cmd, cwd=self.cwd, capture_output=True, text=True, encoding="utf-8",
-                               errors="replace", timeout=900)
+                               errors="replace", timeout=900, env=env)
             data = json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else {}
         except subprocess.TimeoutExpired:
             answer = "Задача заняла больше пятнадцати минут, я её остановил."
@@ -88,5 +107,9 @@ class ClaudeCodeBrain:
                 answer = (data.get("result") or "").strip() or "Готово."
                 if data.get("is_error"):
                     self.reset()
+                    low = answer.lower()
+                    if "401" in low or "authenticat" in low or "oauth" in low or "log in" in low or "login" in low:
+                        return self._fallback(text, f"{config.USER_NAME}, Claude Code разлогинился: откройте PowerShell, "
+                                              "наберите claude и войдите заново командой слеш логин.")
         storage.log("jarvis", answer)
         return answer

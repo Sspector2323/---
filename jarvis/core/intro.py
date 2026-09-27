@@ -53,8 +53,29 @@ def _browser() -> str | None:
     return shutil.which("msedge") or shutil.which("google-chrome") or shutil.which("chromium")
 
 
-def launch(base_url: str) -> bool:
-    """Показать анимацию на всех мониторах. False — если браузер не найден."""
+def native_available() -> bool:
+    import importlib.util
+    return importlib.util.find_spec("webview") is not None
+
+
+def launch_native(base_url: str, mode: str) -> bool:
+    """Окна Windows (WebView2) на каждом мониторе — отдельным процессом."""
+    if not native_available():
+        return False
+    import sys
+    subprocess.Popen([sys.executable, "-m", "core.screens", base_url, mode], cwd=config.ROOT)
+    return True
+
+
+def launch(base_url: str, with_dashboards: bool = True) -> str | None:
+    """Анимация на всех мониторах. Вернёт 'native' (окна Windows, дашборды тоже откроются), 'browser' или None."""
+    if launch_native(base_url, "intro+dash" if with_dashboards else "intro"):
+        return "native"
+    return "browser" if launch_browser(base_url) else None
+
+
+def launch_browser(base_url: str) -> bool:
+    """Запасной вариант: окна Edge/Chrome во весь экран (позицию браузер соблюдает не всегда)."""
     exe = _browser()
     if not exe:
         return False

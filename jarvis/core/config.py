@@ -27,13 +27,18 @@ EFFORT = os.getenv("JARVIS_EFFORT", "low")
 
 WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "джарвис,jarvis").split(",") if w.strip()]
 TTS_VOICE = os.getenv("TTS_VOICE", "ru-RU-DmitryNeural")
+# Какой голос пробовать первым: edge (бесплатный Microsoft) или openai (стабильный, нужен OPENAI_API_KEY)
+TTS_ENGINE = os.getenv("TTS_ENGINE", "edge").strip().lower()
+OPENAI_VOICE = os.getenv("OPENAI_VOICE", "onyx").strip()  # onyx, ash, echo, fable, sage…
 # Запасной голос Windows, если основной недоступен (на многих ПК он только женский — Irina)
 OFFLINE_VOICE = _bool("OFFLINE_VOICE", True)
 USER_NAME = os.getenv("USER_NAME", "Сабина")
 if USER_NAME.strip().lower() in ("", "сэр"):  # старое значение из первых версий
     USER_NAME = "Сабина"
 GREETING = os.getenv("GREETING", "Моё почтение, {user}. Я к вашим услугам.")
-INTRO_ANIMATION = _bool("INTRO_ANIMATION", True)  # анимация появления на всех мониторах
+INTRO_ANIMATION = _bool("INTRO_ANIMATION", True)
+# Дашборд после запуска: all = на всех мониторах, main = только на главном, off = не открывать
+DASHBOARD_SCREENS = os.getenv("DASHBOARD_SCREENS", "all").strip().lower()  # анимация появления на всех мониторах
 MORNING_BRIEF = _bool("MORNING_BRIEF", True)      # короткая сводка дня после приветствия
 CITY = os.getenv("CITY", "Москва")
 

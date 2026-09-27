@@ -240,8 +240,17 @@ def run_command(command: str):
     return _run(command, shell=True, timeout=120)
 
 
-@tool("open_dashboard", "Открыть дашборд Джарвиса в браузере (задачи, напоминания, почта, заметки, состояние ПК).")
-def open_dashboard():
-    from ..config import DASHBOARD_PORT
-    webbrowser.open(f"http://localhost:{DASHBOARD_PORT}")
+@tool("open_dashboard", "Открыть дашборд Джарвиса. all_screens=true — разложить интерфейс на все мониторы "
+      "(главный — всё, левый — работа, правый — личное).",
+      {"all_screens": {"type": "boolean", "description": "На все мониторы"}})
+def open_dashboard(all_screens: bool = False):
+    from .. import config, intro
+    url = f"http://localhost:{config.DASHBOARD_PORT}"
+    if all_screens and intro.native_available():
+        import subprocess
+        import sys
+        env = {**os.environ, "DASHBOARD_SCREENS": "all"}
+        subprocess.Popen([sys.executable, "-m", "core.screens", url, "dash"], cwd=config.ROOT, env=env)
+        return "Разворачиваю интерфейс на все мониторы"
+    webbrowser.open(url)
     return "Дашборд открыт"
