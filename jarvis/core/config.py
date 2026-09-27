@@ -15,6 +15,9 @@ def _bool(name: str, default: bool) -> bool:
     return os.getenv(name, str(default)).strip().lower() in ("1", "true", "yes", "да")
 
 
+# Чей мозг: openai (GPT) или claude
+AI_PROVIDER = os.getenv("AI_PROVIDER", "openai").strip().lower()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1")
 MODEL = os.getenv("JARVIS_MODEL", "claude-opus-5")
 EFFORT = os.getenv("JARVIS_EFFORT", "low")
 

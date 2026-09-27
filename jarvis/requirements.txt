@@ -1,4 +1,5 @@
-# Мозг
+# Мозг (OpenAI или Claude — выбирается в .env)
+openai>=1.50
 anthropic>=1.8
 python-dotenv>=1.0
 

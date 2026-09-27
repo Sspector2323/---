@@ -36,8 +36,9 @@ def reminder_loop(io):
 
 def main():
     text_mode = "--text" in sys.argv
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        print("❌ Не найден ANTHROPIC_API_KEY. Скопируйте .env.example в .env и вставьте ключ.")
+    key = "OPENAI_API_KEY" if config.AI_PROVIDER == "openai" else "ANTHROPIC_API_KEY"
+    if not os.getenv(key):
+        print(f"❌ Не найден {key}. Откройте файл .env и вставьте ключ.")
         sys.exit(1)
 
     if text_mode:
@@ -48,7 +49,10 @@ def main():
         print("🎙 Настраиваю микрофон…")
         io = Voice()
 
-    from core.brain import Brain
+    if config.AI_PROVIDER == "openai":
+        from core.brain_openai import OpenAIBrain as Brain
+    else:
+        from core.brain import Brain
     brain = Brain(confirm=io.confirm, on_status=lambda s: print("  " + s))
     lock = threading.Lock()
 

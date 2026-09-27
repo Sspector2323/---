@@ -28,7 +28,7 @@ if errorlevel 1 (
 if not exist .env copy .env.example .env >nul
 echo.
 echo ===== Готово! =====
-echo Сейчас откроется файл настроек .env — вставьте ANTHROPIC_API_KEY и сохраните (Ctrl+S).
+echo Сейчас откроется файл настроек .env — вставьте OPENAI_API_KEY и сохраните (Ctrl+S).
 echo Потом запускайте Джарвиса файлом start_jarvis.bat
 notepad .env
 pause
