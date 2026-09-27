@@ -97,6 +97,26 @@ curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del in
 
 ---
 
+## Часть 4. Notion, GitHub и «вместе с Claude в облаке»
+
+### Notion (≈3 минуты)
+1. Откройте https://www.notion.so/profile/integrations → **New integration** → тип Internal, имя «Джарвис» → Save → скопируйте **Internal Integration Secret**.
+2. В Notion откройте базу **«Сводка задач»** → ••• (справа вверху) → **Подключения** → найдите «Джарвис» → Подтвердить. То же самое для страницы **«J.A.R.V.I.S. — общий штаб»**.
+3. Дашборд → ⚙ Настройки → «Notion: секрет интеграции» → вставить → Сохранить → перезапустить Джарвиса.
+
+### GitHub (≈3 минуты)
+1. Откройте https://github.com/settings/personal-access-tokens/new, задайте имя «Джарвис» и срок действия.
+2. Repository access: **All repositories**. Permissions → Repository: **Contents, Pull requests, Issues, Actions** → *Read-only*.
+3. Нажмите Generate token → скопируйте токен → ⚙ Настройки → «GitHub: токен» → Сохранить → перезапустить.
+4. Скажите «Джарвис, скачай все репозитории». Они появятся в папке проектов (по умолчанию `C:\Users\вы\Projects`), и заработает «открой таймкодер».
+
+### Вместе с Claude в облаке
+- **Общий штаб в Notion.** Его ведут и Джарвис («Джарвис, запиши в штаб…»), и Claude в облаке. Любому из них можно сказать «посмотри штаб».
+- **Работа облачного Claude** видна на дашборде в панели «Claude в облаке»: его ветки `claude/…` и PR во всех репозиториях.
+- **Сессии Claude Code с компьютера в приложении Claude.** В PowerShell, в папке проекта, выполните `claude remote-control`. Сессия с компьютера появится в приложении Claude (раздел Code) рядом с облачными, и ею можно управлять с телефона.
+
+---
+
 ## Как это устроено
 
 ```
@@ -113,7 +133,7 @@ curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del in
 | `core/brain_claude_code.py`, `core/mcp_server.py` | мозг = Claude Code; умения Джарвиса для него (MCP) |
 | `core/brain_openai.py`, `core/brain.py` | мозг на OpenAI и на Claude API: цикл вызова инструментов |
 | `core/voice.py` | слух и голос |
-| `core/tools/*.py` | умения: `system` (ПК), `files`, `tasks` (дела), `mail`, `info`, `claude_code` |
+| `core/tools/*.py` | умения: `system` (ПК), `files`, `tasks` (дела), `mail`, `info`, `claude_code`, `notion`, `github`, `workspace` |
 | `core/dashboard.py`, `core/web/index.html` | дашборд |
 | `data/` | ваша база: задачи, заметки, память, журнал. Хранится только у вас на компьютере |
 

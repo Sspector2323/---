@@ -54,6 +54,12 @@ SETTINGS = [
     ("EMAIL_ADDRESS", "Почта", "text", "you@gmail.com"),
     ("EMAIL_PASSWORD", "Пароль приложения почты", "secret", "xxxx xxxx xxxx xxxx"),
     ("CONFIRM_DANGEROUS", "Спрашивать «да/нет» перед опасными действиями", "select", ["true", "false"]),
+    ("NOTION_TOKEN", "Notion: секрет интеграции", "secret", "ntn_…"),
+    ("NOTION_TASKS_DB", "Notion: база задач (id)", "text", "35e4ea9860c980be88d3f6d67aa0a4df"),
+    ("NOTION_HUB_PAGE", "Notion: страница «общий штаб» (id)", "text", "id страницы"),
+    ("GITHUB_TOKEN", "GitHub: токен", "secret", "github_pat_…"),
+    ("PROJECTS_DIR", "Папка с проектами на компьютере", "text", "C:\\Users\\вы\\Projects"),
+    ("WORKSPACE_URLS", "Рабочая зона: сайты через запятую", "text", "https://railway.com/dashboard,…"),
 ]
 SECRET_KEYS = {k for k, _, kind, _ in SETTINGS if kind == "secret"}
 
@@ -136,6 +142,33 @@ def state():
         "log": storage.query("SELECT * FROM log ORDER BY id DESC LIMIT 40"),
         "system": _system(),
     })
+
+
+@app.get("/api/work")
+def work():
+    """Текущая работа: репозитории GitHub и задачи Notion (грузится отдельно — может занять пару секунд)."""
+    from .tools import github, notion
+    out = {"github": None, "notion": None, "errors": {}, "hub": None, "notion_db": None}
+    if github.enabled():
+        try:
+            out["github"] = github.overview()
+        except Exception as e:  # noqa: BLE001
+            out["errors"]["github"] = str(e)
+    if notion.enabled():
+        try:
+            out["notion"] = notion.tasks_rows()
+        except Exception as e:  # noqa: BLE001
+            out["errors"]["notion"] = str(e)
+        if config.NOTION_HUB_PAGE:
+            out["hub"] = f"https://www.notion.so/{config.NOTION_HUB_PAGE.replace('-', '')}"
+        out["notion_db"] = f"https://www.notion.so/{config.NOTION_TASKS_DB.replace('-', '')}"
+    return jsonify(out)
+
+
+@app.post("/api/notion/<task_id>/status")
+def notion_status(task_id: str):
+    from .tools import notion
+    return jsonify(result=notion.notion_set_status(task_id, request.get_json(force=True)["status"]))
 
 
 @app.post("/api/tasks")

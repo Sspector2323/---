@@ -45,6 +45,13 @@
   .bar i { display: block; height: 100%; background: var(--accent); }
   #answer { margin-top: 10px; color: var(--accent); white-space: pre-wrap; }
   .who-user { color: var(--muted); } .who-jarvis { color: var(--accent); }
+  .repos { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .repo { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+  .repo a { color: var(--text); text-decoration: none; font-weight: 600; overflow-wrap: anywhere; }
+  .repo a:hover { color: var(--accent); }
+  .ci-success { color: var(--ok); } .ci-failure { color: var(--bad); } .ci-in_progress, .ci-queued { color: var(--warn); }
+  .pill { display: inline-block; font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin: 4px 4px 0 0; }
+  h2 a { font-size: 12px; text-transform: none; letter-spacing: 0; }
   @media (max-width: 600px) { header, main { padding-left: 16px; padding-right: 16px; } .stats { grid-template-columns: repeat(2, 1fr); } }
 </style>
 </head>
@@ -55,6 +62,18 @@
     <h2>Команда</h2>
     <form id="askForm"><input type="text" id="ask" placeholder="Напишите Джарвису, например: «что у меня на завтра?»"><button>Отправить</button></form>
     <div id="answer"></div>
+  </section>
+  <section class="wide">
+    <h2>Текущая работа · GitHub</h2>
+    <div id="gh" class="muted">Загружаю…</div>
+  </section>
+  <section>
+    <h2>Claude в облаке · его ветки и PR</h2>
+    <ul id="cloud"><li class="muted">Загружаю…</li></ul>
+  </section>
+  <section>
+    <h2>Notion · Сводка задач <a id="nlink" class="muted" target="_blank"></a></h2>
+    <ul id="notion"><li class="muted">Загружаю…</li></ul>
   </section>
   <section><h2>Система</h2><div class="stats" id="sys"></div></section>
   <section>
@@ -96,6 +115,38 @@ async function refresh() {
   list("log", s.log, l => `<li><span class="muted">${esc(l.ts.slice(11))}</span>
     <span class="grow who-${l.who}">${l.who === "user" ? "Вы" : "Джарвис"}: ${esc(l.text)}</span></li>`, "Пусто");
 }
+const CI = {success: "✓ проверки прошли", failure: "✗ проверки упали", in_progress: "… проверки идут", queued: "… в очереди"};
+async function refreshWork() {
+  const w = await api("/api/work");
+  const hint = (what, where) => `<span class="muted">${what} не подключён — ⚙ <a href="/settings">Настройки</a> → ${where}</span>`;
+  if (w.github) {
+    $("gh").innerHTML = `<div class="repos">${w.github.map(r => `<div class="repo">
+      <a href="${esc(r.url)}" target="_blank">${esc(r.name.split("/")[1])}</a>${r.private ? ' <span class="muted">🔒</span>' : ""}
+      <div class="muted">обновлён ${esc(r.pushed)}</div>
+      ${r.ci ? `<div class="ci-${esc(r.ci)}">${CI[r.ci] || esc(r.ci)}</div>` : ""}
+      ${r.prs.map(p => `<a class="pill" href="${esc(p.url)}" target="_blank">PR #${p.n} ${esc(p.title).slice(0, 40)}</a>`).join("")}
+    </div>`).join("")}</div>`;
+    const cloud = w.github.flatMap(r => r.claude.map(b => ({repo: r.name.split("/")[1], branch: b,
+      pr: r.prs.find(p => p.branch === b), url: `${r.url}/tree/${b}`})));
+    list("cloud", cloud, c => `<li><span class="grow"><b>${esc(c.repo)}</b> · <a href="${esc(c.url)}" target="_blank" class="muted">${esc(c.branch)}</a>
+      ${c.pr ? `<div><a class="pill" href="${esc(c.pr.url)}" target="_blank">PR #${c.pr.n} ${esc(c.pr.title)}</a></div>` : ""}</span></li>`,
+      "Сейчас Claude в облаке ничего не ведёт");
+  } else {
+    $("gh").innerHTML = w.errors.github ? `<span class="muted">GitHub: ${esc(w.errors.github)}</span>` : hint("GitHub", "GitHub: токен");
+    $("cloud").innerHTML = `<li>${hint("GitHub", "GitHub: токен")}</li>`;
+  }
+  if (w.notion) {
+    $("nlink").href = w.notion_db; $("nlink").textContent = "открыть ↗";
+    const opts = ["Не начато", "В работе", "Готово"];
+    list("notion", w.notion, t => `<li><span class="grow"><a href="${esc(t.url)}" target="_blank" style="color:inherit;text-decoration:none">${esc(t.title)}</a>
+      <div class="muted">${esc(t.priority || "")} · изменено ${esc(t.edited)}</div></span>
+      <select onchange="setNotion('${t.id}', this.value)">${opts.map(o => `<option ${o === t.status ? "selected" : ""}>${o}</option>`).join("")}</select></li>`,
+      "Все задачи в Notion выполнены");
+  } else {
+    $("notion").innerHTML = `<li>${w.errors.notion ? `<span class="muted">Notion: ${esc(w.errors.notion)}</span>` : hint("Notion", "Notion: секрет")}</li>`;
+  }
+}
+async function setNotion(id, status) { await api(`/api/notion/${id}/status`, {method: "POST", body: JSON.stringify({status})}); refreshWork(); }
 async function toggle(id) { await api(`/api/tasks/${id}/toggle`, {method: "POST"}); refresh(); }
 async function delTask(id) { await api(`/api/tasks/${id}`, {method: "DELETE"}); refresh(); }
 async function delRem(id) { await api(`/api/reminders/${id}`, {method: "DELETE"}); refresh(); }
@@ -114,6 +165,7 @@ $("askForm").onsubmit = async e => {
   refresh();
 };
 refresh(); setInterval(refresh, 5000);
+refreshWork(); setInterval(refreshWork, 60000);
 </script>
 </body>
 </html>
