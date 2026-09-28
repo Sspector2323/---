@@ -94,6 +94,8 @@ class Voice:
     def say(self, text: str, cache: bool = False, quiet: bool = False):
         if not quiet:
             print(f"🤖 Джарвис: {text}")
+        from .speech import for_speech
+        text = for_speech(text)  # ссылки, пути и разметку не читаем — они на экране
         if not text:
             return
         cached = self._cache_path(text) if cache else None

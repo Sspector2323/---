@@ -7,6 +7,7 @@ import openai
 
 from . import config, storage
 from .brain import MAX_HISTORY, SYSTEM
+from .runner import run_tool
 from .tools import load_all
 from .tools.info import DAYS
 from .tools.tasks import memory_text
@@ -40,15 +41,7 @@ class OpenAIBrain:
         t = self.tools.get(name)
         if not t:
             return f"Нет инструмента {name}"
-        if t.dangerous and config.CONFIRM_DANGEROUS:
-            details = ", ".join(f"{k}: {v}" for k, v in args.items())
-            if not self.confirm(f"{t.description} {details}".strip()):
-                return "Пользователь отменил действие."
-        self.on_status(f"⚙ {name} {json.dumps(args, ensure_ascii=False)[:200]}")
-        try:
-            return str(t.func(**args))
-        except Exception as e:  # noqa: BLE001
-            return f"Ошибка: {type(e).__name__}: {e}"
+        return run_tool(t, name, args, self.confirm, self.on_status)[0]
 
     def ask(self, text: str) -> str:
         if len(self.messages) > MAX_HISTORY:

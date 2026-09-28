@@ -1,11 +1,11 @@
 """Мозг Джарвиса: Claude + цикл вызова инструментов."""
-import json
 from datetime import datetime
 from typing import Callable
 
 import anthropic
 
 from . import config, storage
+from .runner import run_tool
 from .tools import load_all
 from .tools.info import DAYS
 from .tools.tasks import memory_text
@@ -18,6 +18,8 @@ SYSTEM = """Ты — Джарвис, личный голосовой ИИ-асс
 Как отвечать:
 - Твои ответы озвучиваются голосом. Говори коротко (1–3 предложения), по-русски, без markdown, списков,
   эмодзи и ссылок. Числа и время пиши так, как их удобно произнести.
+- Никогда не проговаривай названия команд, инструментов, адреса сайтов, пути к файлам и id — просто скажи,
+  что делаешь или что сделано («Открываю репозиторий», «Скриншот сохранён»). Детали видны на дашборде.
 - Если нужно действие — сразу вызывай инструмент, не спрашивай разрешения (опасные действия подтверждаются
   автоматически). После действия коротко скажи, что сделано.
 - Для многошаговых задач вызывай несколько инструментов подряд. Если для чего-то нет отдельного
@@ -77,15 +79,7 @@ class Brain:
         t = self.tools.get(name)
         if not t:
             return f"Нет инструмента {name}", True
-        if t.dangerous and config.CONFIRM_DANGEROUS:
-            details = ", ".join(f"{k}: {v}" for k, v in args.items())
-            if not self.confirm(f"{t.description} {details}".strip()):
-                return "Пользователь отменил действие.", False
-        self.on_status(f"⚙ {name} {json.dumps(args, ensure_ascii=False)[:200]}")
-        try:
-            return str(t.func(**args)), False
-        except Exception as e:  # noqa: BLE001
-            return f"Ошибка: {type(e).__name__}: {e}", True
+        return run_tool(t, name, args, self.confirm, self.on_status)
 
     def ask(self, text: str) -> str:
         if len(self.messages) > MAX_HISTORY:

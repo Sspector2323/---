@@ -42,13 +42,12 @@ def ask_user(tool_name: str, tool_input: dict) -> bool:
     import requests
     detail = tool_input.get("command") or tool_input.get("file_path") or tool_input.get("description") \
         or json.dumps(tool_input, ensure_ascii=False)[:200]
-    names = {"Bash": "выполнить команду", "PowerShell": "выполнить команду", "Write": "записать файл",
-             "Edit": "изменить файл", "NotebookEdit": "изменить файл"}
-    what = names.get(tool_name, TOOLS[tool_name.split("__")[-1]].description
-                     if tool_name.split("__")[-1] in TOOLS else tool_name)
+    from core import activity
+    label, _ = activity.describe(tool_name, tool_input)
+    what = label
     try:
         r = requests.post(f"http://127.0.0.1:{os.getenv('JARVIS_PORT', config.DASHBOARD_PORT)}/api/confirm",
-                          json={"question": f"{what}: {detail}"},
+                          json={"question": f"{what}: {detail}", "spoken": f"Разрешите {activity.spoken(tool_name)}?"},
                           headers={"X-Jarvis-Token": _token()},
                           proxies={"http": None, "https": None}, timeout=60)
         return bool(r.json().get("ok"))

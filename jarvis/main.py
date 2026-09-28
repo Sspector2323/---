@@ -126,8 +126,17 @@ def main():
     lock = threading.Lock()
 
     def ask(text: str) -> str:
+        from core import activity
+        source = "telegram" if text.startswith("[Сообщение из Телеграма]") else "voice"
         with lock:
-            return brain.ask(text)
+            activity.task_start(text.replace("[Сообщение из Телеграма] ", "✈️ ")[:200], source)
+            try:
+                answer = brain.ask(text)
+            except Exception as e:  # noqa: BLE001
+                activity.task_end(f"Ошибка: {e}", ok=False)
+                raise
+            activity.task_end(answer)
+            return answer
 
     dashboard.BRAIN.update(ask=ask, confirm=confirmer.ask, say=io.say, confirmer=confirmer)
     from core.telegram_bot import Bot
@@ -193,6 +202,9 @@ def main():
 
         t0 = time.time()
         answer = try_quick(command)
+        if answer is not None:
+            from core import activity
+            activity.emit("done", f"Быстрая команда: {command}", answer or "")
         if answer is None:
             answer = ask_with_fillers(io, ask, command)
             print(f"  ⏱ мозг думал {time.time() - t0:.1f} с")

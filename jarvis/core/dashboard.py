@@ -301,7 +301,11 @@ def run_tool():
     if name not in UI_TOOLS or not tool:
         return jsonify(ok=False, result="Это действие с дашборда недоступно"), 400
     try:
+        from . import activity
+        label, detail = activity.describe(name, args)
+        activity.emit("tool", f"{label} (кнопка на дашборде)", detail, "dashboard")
         result = str(tool.func(**args))
+        activity.emit("done", f"{label} — готово", result[:600], "dashboard")
         if name not in READ_ONLY_UI:  # в журнал — только действия, не просмотр
             storage.log("jarvis", f"[дашборд] {result[:200]}")
         return jsonify(ok=True, result=result)
@@ -367,8 +371,14 @@ def ask():
 def confirm():
     """Claude Code (через MCP-сервер) спрашивает разрешение — голосом и окном на дашборде."""
     fn = BRAIN["confirm"]
-    question = request.get_json(force=True).get("question", "")
-    return jsonify(ok=bool(fn and fn(question)))
+    d = request.get_json(force=True)
+    return jsonify(ok=bool(fn and fn(d.get("question", ""), d.get("spoken"))))
+
+
+@app.get("/api/activity")
+def activity_feed():
+    from . import activity
+    return jsonify(activity.listing(int(request.args.get("after", 0) or 0)))
 
 
 @app.get("/api/pending")

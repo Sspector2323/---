@@ -15,9 +15,14 @@ class Confirmer:
         self.notifiers: list = []   # куда ещё отправить вопрос (Телеграм)
         self.resolvers: list = []   # кому сообщить, что вопрос решён
 
-    def ask(self, question: str, timeout: float = 120) -> bool:
+    def ask(self, question: str, spoken: str | None = None, timeout: float = 120) -> bool:
+        from . import activity
         cid = uuid.uuid4().hex[:8]
-        item = {"q": question[:400], "event": threading.Event(), "answer": None}
+        if not spoken:  # «Выполняет команду: dir C:\…» → «Разрешите: выполняет команду?»
+            head = question.split(":", 1)[0].strip()
+            spoken = f"Разрешите: {head[:60].lower()}?"
+        item = {"q": question[:400], "spoken": spoken, "event": threading.Event(), "answer": None}
+        activity.emit("confirm", "Ждёт вашего разрешения", question[:400])
         with self.lock:
             self.pending[cid] = item
         for notify in self.notifiers:
@@ -45,7 +50,7 @@ class Confirmer:
     def _by_voice(self, cid: str, item: dict):
         self.io.confirming = True
         try:
-            self.io.say(f"Подтвердите: {item['q'][:200]}. Да или нет? Можно кнопкой на дашборде.")
+            self.io.say(f"{item['spoken']} Да или нет?")
             for _ in range(4):  # ~30 секунд слушаем, пока не ответят голосом или кнопкой
                 if item["event"].is_set():
                     return
@@ -71,6 +76,8 @@ class Confirmer:
         item["answer"] = yes
         item["event"].set()
         self._resolved(cid, yes)
+        from . import activity
+        activity.emit("done" if yes else "error", "Разрешено" if yes else "Отклонено", item["q"][:200])
         if self.voice:
             self.io.say("Принято." if yes else "Отменяю.", cache=True, quiet=True)
         return True

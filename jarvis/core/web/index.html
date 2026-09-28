@@ -181,6 +181,30 @@
 
   .confirm-sheet { border-color: rgba(251,191,36,.5); box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 30px rgba(251,191,36,.25); }
   .confirm-ic { font-size: 34px; }
+  /* Прямой эфир */
+  .live .chipset { display: flex; gap: 6px; flex-wrap: wrap; }
+  .live .chip.on { color: var(--text); border-color: var(--accent); background: rgba(56,217,255,.1); }
+  .now { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; margin-bottom: 10px;
+         background: rgba(3,10,20,.55); border: 1px solid var(--line); font-size: 15px; }
+  .now.busy { border-color: var(--accent); box-shadow: var(--glow); }
+  .now #nowText { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot-pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); flex: none; }
+  .now.busy .dot-pulse { background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: pulse 1s infinite; }
+  ul.feed { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow: auto; font-size: 14px; }
+  ul.feed li { display: grid; grid-template-columns: 64px 22px 1fr; gap: 8px; padding: 6px 8px; border-radius: 8px;
+               border-left: 2px solid transparent; cursor: pointer; animation: fadein .35s ease; }
+  ul.feed li:hover { background: rgba(56,217,255,.05); }
+  ul.feed li .t { color: var(--dim); font-variant-numeric: tabular-nums; }
+  ul.feed li .d { grid-column: 3; color: var(--muted); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere;
+                  display: none; margin-top: 4px; max-height: 240px; overflow: auto; }
+  ul.feed li.open .d { display: block; }
+  ul.feed li .sub { color: var(--muted); }
+  ul.feed li.k-task { border-left-color: var(--accent2); background: rgba(10,132,255,.07); font-weight: 500; }
+  ul.feed li.k-error { border-left-color: var(--bad); } ul.feed li.k-error .x1 { color: var(--bad); }
+  ul.feed li.k-confirm { border-left-color: var(--warn); }
+  ul.feed li.k-answer { border-left-color: var(--ok); }
+  ul.feed li.k-think .x1 { color: var(--muted); font-style: italic; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(-4px); } }
   ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; }
 
   /* Раскладка по мониторам: ?view=work (левый) / ?view=life (правый) */
@@ -234,6 +258,15 @@
   <section class="actions" id="actions"></section>
 
   <main class="grid">
+    <section data-v="work" class="card w12 live">
+      <h2>Прямой эфир · что делает Джарвис <span class="count" id="lcount">0</span>
+        <span class="right chipset" id="lfilter">
+          <button class="chip on" data-f="all">Всё</button><button class="chip" data-f="tool">Действия</button>
+          <button class="chip" data-f="claude">Claude Code</button><button class="chip" data-f="error">Ошибки</button>
+        </span></h2>
+      <div class="now" id="now"><span class="dot-pulse"></span><span id="nowText">Ожидаю команду</span><span class="muted" id="nowTime"></span></div>
+      <ul class="feed" id="feed"><li class="empty">Здесь в реальном времени появится каждый шаг Джарвиса</li></ul>
+    </section>
     <section data-v="work" class="card w5">
       <h2>Система <span class="right muted" id="uptime"></span></h2>
       <div class="rings" id="rings"></div>
@@ -546,6 +579,41 @@ $("noteForm").onsubmit = async e => { e.preventDefault(); const v = $("noteText"
 $("memForm").onsubmit = async e => { e.preventDefault(); const k = $("memKey").value.trim(), v = $("memVal").value.trim(); if (!k || !v) return;
   await tool("remember", {key: k, value: v}); $("memKey").value = $("memVal").value = ""; };
 (() => { const d = new Date(Date.now() + 3600e3); d.setMinutes(0); $("remAt").value = new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); })();
+
+// ---------- Прямой эфир ----------
+const ICON = {task: "🎯", tool: "⚙️", done: "✅", error: "❌", think: "💭", confirm: "⚠️", answer: "💬", system: "🛰"};
+const SRC = {claude: "Claude Code", telegram: "Телеграм", dashboard: "дашборд", voice: "голос"};
+let LAST = 0, EVENTS = [], FILTER = "all";
+function feedRow(e) {
+  const main = esc(e.title), sub = e.kind === "task" && e.source ? ` <span class="sub">· ${esc(SRC[e.source] || e.source)}</span>` :
+               e.source === "claude" && e.kind !== "task" ? ` <span class="sub">· Claude</span>` : "";
+  const short = e.detail && e.kind !== "task" ? ` <span class="sub">— ${esc(e.detail.split("\n")[0].slice(0, 90))}</span>` : "";
+  return `<li class="k-${e.kind}" onclick="this.classList.toggle('open')"><span class="t">${esc(e.ts.slice(11, 19))}</span>
+    <span>${ICON[e.kind] || "•"}</span><span class="x1">${main}${sub}${short}</span>
+    ${e.detail ? `<div class="d">${esc(e.detail)}</div>` : ""}</li>`;
+}
+function renderFeed() {
+  const pass = e => FILTER === "all" || (FILTER === "tool" && ["tool", "done", "task"].includes(e.kind)) ||
+                    (FILTER === "claude" && e.source === "claude") || (FILTER === "error" && e.kind === "error");
+  const list = EVENTS.filter(pass).slice(-200).reverse();
+  $("feed").innerHTML = list.length ? list.map(feedRow).join("") : `<li class="empty">Пока пусто</li>`;
+  $("lcount").textContent = EVENTS.length;
+}
+async function pollFeed() {
+  try {
+    const r = await api(`/api/activity?after=${LAST}`);
+    if (r.events.length) { EVENTS.push(...r.events); EVENTS = EVENTS.slice(-400); LAST = r.events[r.events.length - 1].id; renderFeed(); }
+    const now = $("now");
+    if (r.current) {
+      now.classList.add("busy");
+      $("nowText").textContent = "Сейчас: " + r.current.title;
+      $("nowTime").textContent = `${Math.round(r.current.elapsed)} с · шагов: ${r.current.steps || 0}`;
+    } else { now.classList.remove("busy"); $("nowText").textContent = "Ожидаю команду"; $("nowTime").textContent = ""; }
+  } catch {}
+}
+$("lfilter").onclick = e => { const b = e.target.closest(".chip"); if (!b) return;
+  FILTER = b.dataset.f; $("lfilter").querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === b)); renderFeed(); };
+pollFeed(); setInterval(pollFeed, 1000);
 
 // ---------- Подтверждения опасных действий ----------
 let CONFIRM_ID = null;

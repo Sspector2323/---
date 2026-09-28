@@ -81,7 +81,8 @@ def send_voice(text: str, chat_id: int) -> bool:
     fd, path = tempfile.mkstemp(suffix=".ogg")
     os.close(fd)
     try:
-        params = dict(model="gpt-4o-mini-tts", voice=config.OPENAI_VOICE, input=text[:3500], response_format="opus",
+        from .speech import for_speech
+        params = dict(model="gpt-4o-mini-tts", voice=config.OPENAI_VOICE, input=for_speech(text)[:3500], response_format="opus",
                       instructions=config.VOICE_STYLE, speed=config.VOICE_SPEED)
         try:
             with openai.OpenAI().audio.speech.with_streaming_response.create(**params) as r:

@@ -7,6 +7,7 @@
 import json
 import os
 import subprocess
+import threading
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -156,6 +157,52 @@ class ClaudeCodeBrain:
             return f"{problem} Пока отвечаю через OpenAI. {answer}"
         return self._backup.ask(text)
 
+    def _stream(self, cmd: list) -> tuple[dict | None, str]:
+        """Запускает Claude Code и по ходу разбирает его события: каждый инструмент — в «Прямой эфир»."""
+        from . import activity
+        with RUN_LOCK:
+            proc = subprocess.Popen(cmd, cwd=self.cwd, env=_clean_env(), stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
+            killer = threading.Timer(900, proc.kill)
+            killer.start()
+            err_lines: list[str] = []
+            threading.Thread(target=lambda: err_lines.extend(proc.stderr), daemon=True).start()
+            result, names = None, {}
+            try:
+                for line in proc.stdout:
+                    try:
+                        ev = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    kind = ev.get("type")
+                    if kind == "assistant":
+                        for block in ev.get("message", {}).get("content", []):
+                            if block.get("type") == "tool_use":
+                                name = block.get("name", "")
+                                names[block.get("id")] = name
+                                if name.endswith("__approve"):
+                                    continue
+                                label, detail = activity.describe(name, block.get("input"))
+                                activity.emit("tool", label, detail, "claude")
+                                activity.task_step()
+                            elif block.get("type") == "text" and block.get("text", "").strip():
+                                activity.emit("think", block["text"].strip()[:200], "", "claude")
+                    elif kind == "user":
+                        for block in ev.get("message", {}).get("content", []) or []:
+                            if isinstance(block, dict) and block.get("type") == "tool_result" and block.get("is_error"):
+                                label = activity.describe(names.get(block.get("tool_use_id"), ""), {})[0]
+                                content = block.get("content")
+                                text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+                                activity.emit("error", f"{label} — не получилось", text[:600], "claude")
+                    elif kind == "result":
+                        result = ev
+                proc.wait(timeout=30)
+            finally:
+                killer.cancel()
+            if proc.returncode is None or (proc.returncode < 0 and result is None):
+                raise subprocess.TimeoutExpired(cmd, 900)
+            return result or {}, "".join(err_lines)
+
     def _mcp_config(self) -> str:
         return json.dumps({"mcpServers": {"jarvis": {
             "command": sys.executable,
@@ -187,31 +234,32 @@ class ClaudeCodeBrain:
         if self.session_id:
             cmd += ["--resume", self.session_id]
         self.on_status("⚙ передаю Claude Code…")
+        cmd[cmd.index("json")] = "stream-json"  # поток событий: каждый шаг сразу в «Прямой эфир»
+        cmd.append("--verbose")
         try:
-            env = _clean_env()
-            r = run_claude(cmd, cwd=self.cwd, capture_output=True, text=True, encoding="utf-8",
-                               errors="replace", timeout=900, env=env)
-            data = json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else {}
+            data, stderr = self._stream(cmd)
         except subprocess.TimeoutExpired:
+            data, stderr = None, ""
             answer = "Задача заняла больше пятнадцати минут, я её остановил."
-        except (json.JSONDecodeError, IndexError):
-            answer = "Claude Code ответил непонятно: " + (r.stderr or r.stdout)[-300:]
+        if data is None and not stderr:
+            pass
+        elif not data:
+            answer = "Claude Code не ответил. " + stderr[-300:]
+            if any(w in stderr.lower() for w in AUTH_WORDS):
+                self.down_until = time.time() + 600
+                STATUS.update(ok=False, note="не выполнен вход — login_claude.bat")
+                return self._fallback(text, f"{config.USER_NAME}, Claude Code без входа: запустите login_claude.bat.")
         else:
-            if not data:
-                answer = "Claude Code не ответил. " + (r.stderr or "")[-300:]
-                if "login" in (r.stderr or "").lower() or "auth" in (r.stderr or "").lower():
-                    answer = "Claude Code не авторизован. Откройте PowerShell, наберите claude и войдите в аккаунт."
-            else:
-                self.session_id = data.get("session_id") or self.session_id
-                if not data.get("is_error"):
-                    STATUS.update(ok=True, note="на связи")
-                answer = (data.get("result") or "").strip() or "Готово."
-                if data.get("is_error"):
-                    self.reset()
-                    if any(w in answer.lower() for w in AUTH_WORDS):
-                        self.down_until = time.time() + 600
-                        STATUS.update(ok=False, note="не выполнен вход — login_claude.bat")
-                        return self._fallback(text, f"{config.USER_NAME}, Claude Code разлогинился: откройте PowerShell, "
-                                              "наберите claude и войдите заново командой слеш логин.")
+            self.session_id = data.get("session_id") or self.session_id
+            if not data.get("is_error"):
+                STATUS.update(ok=True, note="на связи")
+            answer = (data.get("result") or "").strip() or "Готово."
+            if data.get("is_error"):
+                self.reset()
+                if any(w in answer.lower() for w in AUTH_WORDS):
+                    self.down_until = time.time() + 600
+                    STATUS.update(ok=False, note="не выполнен вход — login_claude.bat")
+                    return self._fallback(text, f"{config.USER_NAME}, Claude Code разлогинился: запустите "
+                                          "login_claude.bat и войдите заново.")
         storage.log("jarvis", answer)
         return answer
