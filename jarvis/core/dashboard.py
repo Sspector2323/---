@@ -274,6 +274,7 @@ def state():
     return jsonify({
         "now": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "user": config.USER_NAME,
+        "version": __import__("core").VERSION,
         "provider": config.AI_PROVIDER,
         "editor": config.EDITOR,
         "tasks": storage.query("SELECT * FROM tasks ORDER BY done, due IS NULL, due, id DESC LIMIT 100"),
@@ -400,6 +401,12 @@ def confirm():
     fn = BRAIN["confirm"]
     d = request.get_json(force=True)
     return jsonify(ok=bool(fn and fn(d.get("question", ""), d.get("spoken"))))
+
+
+@app.get("/api/version")
+def version_api():
+    from . import VERSION
+    return jsonify(version=VERSION, pid=os.getpid(), root=str(config.ROOT))
 
 
 @app.get("/api/activity")

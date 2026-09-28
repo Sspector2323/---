@@ -44,7 +44,7 @@
 </style>
 </head>
 <body>
-<header><h1>НАСТРОЙКИ</h1><span class="lead">Всё сохраняется сразу и применяется без перезапуска</span><a class="back" href="/">← Дашборд</a></header>
+<header><h1>НАСТРОЙКИ</h1><span class="lead" id="verline">Всё сохраняется сразу и применяется без перезапуска</span><a class="back" href="/">← Дашборд</a></header>
 <main id="main"><p class="lead">Загружаю…</p></main>
 <script>
 const TOKEN = "__TOKEN__";
@@ -205,6 +205,9 @@ const ACCESS = `<section><h2><span class="ic">🛡</span>Доступы Windows<
   <li><b>Cursor и Codex:</b> установите их и дважды кликните <code>connect_editors.bat</code>.</li>
   <li><b>Обновление Джарвиса:</b> дважды кликните <code>update_jarvis.bat</code>.</li></ol></section>`;
 load();
+fetch("/api/version").then(r => r.json()).then(v => { document.getElementById("verline").textContent =
+  `Версия ${v.version} · всё сохраняется сразу`; }).catch(() => { document.getElementById("verline").textContent =
+  "⚠ Запущена старая версия Джарвиса — закройте его окно и запустите start_jarvis.bat заново"; });
 </script>
 </body>
 </html>

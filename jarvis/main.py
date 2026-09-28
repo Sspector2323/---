@@ -80,6 +80,13 @@ def reminder_loop(io):
 
 
 def main():
+    from core import VERSION
+    from core.single import kill_old_instances
+    print(f"J.A.R.V.I.S. · версия {VERSION} · {config.ROOT}")
+    old = kill_old_instances()
+    if old:
+        print(f"↻ Закрыл старую копию Джарвиса ({', '.join(old)}) — теперь работает эта версия.")
+        time.sleep(1)
     text_mode = "--text" in sys.argv
     key = {"openai": "OPENAI_API_KEY", "hybrid": "OPENAI_API_KEY", "claude": "ANTHROPIC_API_KEY"}.get(config.AI_PROVIDER)
     if key and not os.getenv(key):

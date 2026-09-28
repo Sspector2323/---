@@ -308,6 +308,7 @@
   </main>
 </div>
 
+<div class="muted" id="ver" style="text-align:center;padding:0 0 24px;font-size:12px"></div>
 <div class="modal" id="modal" onclick="if (event.target === this) closeModal()"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
 <div class="modal" id="confirmBox" style="z-index:70"><div class="sheet confirm-sheet">
@@ -449,6 +450,7 @@ $("spark").onmouseleave = () => $("spark").querySelector(".tip").style.display =
 const empty = (el, text) => $(el).innerHTML = `<li class="empty">${text}</li>`;
 async function refresh() {
   const s = await api("/api/state"); STATE = s; USER = s.user || USER; tickClock();
+  if (s.version) $("ver").textContent = "J.A.R.V.I.S. · версия " + s.version;
   const sys = s.system || {};
   if (sys.cpu != null) { CPU.push(sys.cpu); if (CPU.length > 60) CPU.shift(); }
   $("rings").innerHTML = ring("Процессор", sys.cpu) + ring("Память", sys.ram) + ring("Диск", sys.disk) + ring("Батарея", sys.battery);

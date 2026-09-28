@@ -86,6 +86,17 @@ def main():
         mins = int((_dt.datetime.now().timestamp() - env.stat().st_mtime) // 60)
         when = "только что" if mins < 1 else f"{mins} мин назад" if mins < 120 else _dt.datetime.fromtimestamp(env.stat().st_mtime).strftime("%d.%m %H:%M")
     print(f"\nФайл настроек: {env}\n  изменён: {when or '—'}  ← если вы правили .env недавно, а здесь давно — вы правите ДРУГОЙ файл")
+    from . import VERSION
+    print(f"Версия в папке: {VERSION}")
+    try:
+        import requests
+        v = requests.get(f"http://127.0.0.1:{config.DASHBOARD_PORT}/api/version", timeout=2,
+                         proxies={"http": None, "https": None}).json()
+        same = v.get("version") == VERSION and v.get("root", "").lower() == str(config.ROOT).lower()
+        print(("✅ " if same else "❌ ") + f"Запущен Джарвис версии {v.get('version')} из папки {v.get('root')}" +
+              ("" if same else "  ← это НЕ эта версия/папка: закройте его и запустите start_jarvis.bat отсюда"))
+    except Exception:  # noqa: BLE001
+        print("○ Джарвис сейчас не запущен (или запущена очень старая версия без номера)")
     print(f"Мозг: {config.AI_PROVIDER}   Модель OpenAI: {config.OPENAI_MODEL}\n")
     if config.SHADOWED:
         print("⚠️ В Windows есть переменные с теми же именами (Джарвис теперь берёт значения из .env): "

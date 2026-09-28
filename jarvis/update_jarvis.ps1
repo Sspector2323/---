@@ -8,6 +8,16 @@ if (-not (Test-Path (Join-Path $root "main.py"))) {
     Write-Host "Это не папка Джарвиса. Откройте папку jarvis и запустите команду оттуда." -ForegroundColor Red
     return
 }
+# Закрываем работающего Джарвиса (в т.ч. свёрнутого из автозапуска) — иначе останется старая версия
+$running = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.ExecutablePath -and $_.ExecutablePath.ToLower().StartsWith($root.ToLower()) -and $_.Name -match "python" }
+if ($running) {
+    Write-Host "Закрываю запущенного Джарвиса..." -ForegroundColor Yellow
+    $running | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 2
+}
+$old = (Select-String -Path (Join-Path $root "core\__init__.py") -Pattern 'VERSION = "(.+?)"' -ErrorAction SilentlyContinue).Matches.Groups[1].Value
+
 $url = "https://github.com/Sspector2323/---/archive/refs/heads/claude/nice-bell-d8d047.zip"
 $tmp = Join-Path $env:TEMP "jarvis_update"
 Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -30,5 +40,9 @@ if (-not (Test-Path $py)) {
 }
 & $py -m pip install --upgrade -r (Join-Path $root "requirements.txt")
 Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+$new = (Select-String -Path (Join-Path $root "core\__init__.py") -Pattern 'VERSION = "(.+?)"').Matches.Groups[1].Value
 Write-Host ""
-Write-Host "Готово! Запускайте start_jarvis.bat" -ForegroundColor Green
+if ($old -and $old -eq $new) { Write-Host "Версия $new — у вас уже была самая свежая." -ForegroundColor Green }
+else { Write-Host "Обновлено: $(if ($old) { $old } else { 'старая версия' }) → $new" -ForegroundColor Green }
+Write-Host "Папка Джарвиса: $root"
+Write-Host "Готово! Запускайте start_jarvis.bat — в первой строке окна будет версия $new" -ForegroundColor Green
