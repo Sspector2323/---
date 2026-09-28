@@ -7,15 +7,19 @@ import sys
 
 from . import config
 
-KNOWN_KEYS = {
-    "AI_PROVIDER", "OPENAI_API_KEY", "OPENAI_MODEL", "ANTHROPIC_API_KEY", "JARVIS_MODEL", "JARVIS_EFFORT",
-    "CLAUDE_CODE_MODEL", "CLAUDE_PATH", "CODEX_PATH", "CURSOR_PATH", "CODE_PATH", "WAKE_WORDS", "TTS_VOICE",
-    "TTS_ENGINE", "OPENAI_VOICE", "OFFLINE_VOICE", "USER_NAME", "GREETING", "INTRO_ANIMATION", "DASHBOARD_SCREENS",
-    "MORNING_BRIEF", "CITY", "EMAIL_ADDRESS", "EMAIL_PASSWORD", "IMAP_HOST", "SMTP_HOST", "CONFIRM_DANGEROUS",
-    "DASHBOARD_PORT", "NOTION_TOKEN", "NOTION_TASKS_DB", "NOTION_HUB_PAGE", "GITHUB_TOKEN", "PROJECTS_DIR",
-    "EDITOR", "WORKSPACE_URLS", "TELEGRAM_BOT_TOKEN", "TELEGRAM_OWNER_ID", "TELEGRAM_BRIEF", "VOICE_SPEED",
-    "VOICE_PITCH", "VOICE_STYLE", "PAUSE_SECONDS",
-}
+def _known_keys() -> set[str]:
+    """Все настройки, которые понимает Джарвис: берём из самого кода, чтобы список не отставал."""
+    keys = {k for k in vars(config) if k.isupper() and not k.startswith("_")}
+    try:
+        from .dashboard import SETTINGS
+        keys |= {row[0] for row in SETTINGS}
+    except Exception:  # noqa: BLE001
+        pass
+    return keys | {"IMAP_HOST", "SMTP_HOST", "DASHBOARD_PORT", "CODEX_PATH", "CURSOR_PATH", "CODE_PATH", "NPM_PATH",
+                   "JARVIS_MODEL", "JARVIS_EFFORT"}
+
+
+KNOWN_KEYS = _known_keys()
 PREFIX = {"OPENAI_API_KEY": "sk-", "ANTHROPIC_API_KEY": "sk-ant-", "NOTION_TOKEN": ("ntn_", "secret_"),
           "GITHUB_TOKEN": ("github_pat_", "ghp_")}
 SECRET = {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "NOTION_TOKEN", "GITHUB_TOKEN", "EMAIL_PASSWORD"}
