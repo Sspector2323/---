@@ -85,6 +85,11 @@ VOICE_STYLE = os.getenv("VOICE_STYLE", "").strip() or _preset[2]
 # Перебивание: заговорили, пока Джарвис говорит, — он замолкает и слушает. Чувствительность: меньше — чутче
 BARGE_IN = _bool("BARGE_IN", True)
 BARGE_SENSITIVITY = float(os.getenv("BARGE_SENSITIVITY", "2.5") or 2.5)
+# word — перебить можно только словом («Джарвис», «стоп», «хватит», «подожди»): эхо из колонок не обрывает его;
+# any — любой громкий голос (удобно в наушниках)
+BARGE_MODE = (os.getenv("BARGE_MODE", "word") or "word").strip().lower()
+# Чувствительность микрофона: больше — слышит тише (1 — обычно, 1.5–2 — если приходится повышать голос)
+MIC_SENSITIVITY = float(os.getenv("MIC_SENSITIVITY", "1.0") or 1.0)
 # Сколько секунд тишины считать концом фразы (больше — можно делать паузы, не боясь, что Джарвис перебьёт)
 PAUSE_SECONDS = float(os.getenv("PAUSE_SECONDS", "1.0") or 1.0)
 # Запасной голос Windows, если основной недоступен (на многих ПК он только женский — Irina)

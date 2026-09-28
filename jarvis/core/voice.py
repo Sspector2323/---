@@ -32,11 +32,16 @@ class Voice:
         # через сколько секунд тишины фраза считается законченной (меньше = быстрее реакция)
         self.rec.pause_threshold = config.PAUSE_SECONDS
         self.rec.non_speaking_duration = min(0.5, config.PAUSE_SECONDS)
-        self.rec.dynamic_energy_threshold = True
+        # Порог НЕ плавает: «динамический» порог после каждой реплики Джарвиса из колонок ползёт вверх,
+        # и приходится кричать. Меряем тишину комнаты один раз и держим порог фиксированным.
+        self.rec.dynamic_energy_threshold = False
         self.mic = sr.Microphone()
         self.lock = threading.Lock()  # чтобы не говорить двумя голосами сразу
         with self.mic as src:
             self.rec.adjust_for_ambient_noise(src, duration=1)
+        self.ambient = self.rec.energy_threshold
+        self._set_threshold()
+        print(f"🎙 Шум комнаты {self.ambient:.0f}, порог микрофона {self.rec.energy_threshold:.0f}")
         self._engine = None
         self.last_stt = 0.0
         try:  # заранее включаем звук, чтобы не тратить на это время при первом ответе
@@ -53,8 +58,14 @@ class Voice:
         except Exception:  # noqa: BLE001 — не Windows
             print("\a", end="", flush=True)
 
+    def _set_threshold(self):
+        """Порог = шум комнаты с небольшим запасом, делённый на «Чувствительность микрофона»."""
+        sens = max(0.3, config.MIC_SENSITIVITY)
+        self.rec.energy_threshold = min(1500.0, max(60.0, max(self.ambient * 1.4, 120.0) / sens))
+
     # ---------- Слух ----------
     def listen(self, timeout: float | None = None, phrase_limit: float = 45) -> str | None:
+        self._set_threshold()  # чувствительность можно менять в настройках на ходу
         try:
             with self.mic as src:
                 audio = self.rec.listen(src, timeout=timeout, phrase_time_limit=phrase_limit)
@@ -211,9 +222,29 @@ class Voice:
                 except OSError:
                     pass
 
+    STOP_TRIGGERS = ("стоп", "хватит", "подожди", "погоди", "замолчи", "стой", "тихо", "отмена")
+
+    def _barge_words(self, text: str) -> tuple[bool, str]:
+        """Есть ли в услышанном обращение («Джарвис…», «стоп»)? И что осталось после него (новая команда)."""
+        import re
+        words = [w for w in config.WAKE_WORDS if w] + ["джарвиз", "жарвис"]
+        low = text.lower()
+        hits = [m.start() for w in words + list(self.STOP_TRIGGERS)
+                for m in re.finditer(rf"\b{re.escape(w)}\b", low)]
+        if not hits:
+            return False, ""
+        rest = text[min(hits):]
+        for w in words:
+            rest = re.sub(rf"\b{re.escape(w)}\b[,!.]?", "", rest, flags=re.I)
+        stops = "|".join(self.STOP_TRIGGERS)
+        rest = re.sub(rf"^[\s,.!]*(?:(?:{stops})\b[\s,.!]*)+", "", rest, flags=re.I)
+        return True, rest.strip(" ,.!")
+
     def _watch_barge_in(self, pygame):
-        """Пока Джарвис говорит — слушаем микрофон. Заговорили громче его эха из колонок → он замолкает,
-        а ваша фраза записывается целиком и становится новой командой."""
+        """Пока Джарвис говорит — слушаем микрофон.
+        word-режим (по умолчанию): услышали голос громче эха — НЕ замолкаем сразу, а тихо распознаём пару секунд.
+        Замолкаем, только если там «Джарвис…», «стоп», «хватит», «подожди». Так его собственный голос из колонок
+        и фоновые разговоры больше не обрывают ответ. any-режим — замолкает от любого громкого голоса."""
         import array
         import math
         from collections import deque
@@ -222,35 +253,83 @@ class Voice:
             a = array.array("h", chunk)
             return math.sqrt(sum(x * x for x in a) / max(1, len(a)))
 
+        def recognize(frames) -> str:
+            audio = self.sr.AudioData(b"".join(frames), src.SAMPLE_RATE, src.SAMPLE_WIDTH)
+            try:
+                return self.rec.recognize_google(audio, language="ru-RU").strip()
+            except (self.sr.UnknownValueError, self.sr.RequestError):
+                return ""
+
+        def drain():  # пока распознавали, в буфере накопился старый звук — выкидываем
+            try:
+                stream = src.stream.pyaudio_stream
+                while stream.get_read_available() >= src.CHUNK:
+                    stream.read(src.CHUNK, exception_on_overflow=False)
+            except Exception:  # noqa: BLE001
+                pass
+
+        def rest_of_phrase() -> str:  # Джарвис замолчал — дослушиваем команду до конца
+            try:
+                audio = self.rec.listen(src, timeout=1.2, phrase_time_limit=30)
+                return self.rec.recognize_google(audio, language="ru-RU").strip()
+            except Exception:  # noqa: BLE001
+                return ""
+
+        any_voice = config.BARGE_MODE == "any"
         try:
             with self.mic as src:
                 chunk_sec = src.CHUNK / src.SAMPLE_RATE
-                ambient = max(self.rec.energy_threshold, 150)
-                echo, started, loud = 0.0, time.time(), 0
+                base = max(self.rec.energy_threshold, 150) * config.BARGE_SENSITIVITY
+                levels = deque(maxlen=int(3 / chunk_sec))  # громкость эха за последние 3 секунды
                 pre = deque(maxlen=int(0.6 / chunk_sec))
+                started, loud = time.time(), 0
                 while pygame.mixer.music.get_busy():
                     data = src.stream.read(src.CHUNK)
                     level = rms(data)
                     pre.append(data)
-                    if time.time() - started < 0.5:  # первые полсекунды — меряем, насколько громко «эхо» Джарвиса
-                        echo = max(echo, level)
+                    if time.time() - started < 0.4 or not levels:
+                        levels.append(level)
                         continue
-                    trigger = max(ambient * config.BARGE_SENSITIVITY, echo * 1.6)
-                    loud = loud + 1 if level > trigger else 0
-                    if loud * chunk_sec < 0.3:
+                    # эхо меряем всё время ответа, а не только в первые полсекунды (там в mp3 ещё тишина)
+                    echo = sorted(levels)[int(len(levels) * 0.9)]
+                    trigger = max(base, echo * 1.5)
+                    if level <= trigger:
+                        levels.append(level)
+                        loud = 0
                         continue
-                    pygame.mixer.music.stop()  # замолкаем
-                    frames, quiet = list(pre), 0.0
-                    while quiet < config.PAUSE_SECONDS and len(frames) * chunk_sec < 30:
+                    loud += 1
+                    if loud * chunk_sec < 0.25:
+                        continue
+                    frames = list(pre)
+                    if any_voice:
+                        pygame.mixer.music.stop()
+                        frames += [src.stream.read(src.CHUNK) for _ in range(int(0.3 / chunk_sec))]
+                        heard = recognize(frames)
+                        more = rest_of_phrase()
+                        self.barge_text = f"{heard} {more}".strip()
+                        print(f"✋ Перебили: {self.barge_text or '(не разобрал)'}")
+                        return
+                    # word-режим: Джарвис продолжает говорить, а мы слушаем ~2 секунды и ищем слово-обращение
+                    quiet, t0 = 0.0, time.time()
+                    while pygame.mixer.music.get_busy() and time.time() - t0 < 2.2:
                         data = src.stream.read(src.CHUNK)
                         frames.append(data)
-                        quiet = quiet + chunk_sec if rms(data) < ambient * 1.3 else 0.0
-                    audio = self.sr.AudioData(b"".join(frames), src.SAMPLE_RATE, src.SAMPLE_WIDTH)
-                    try:
-                        self.barge_text = self.rec.recognize_google(audio, language="ru-RU").strip()
-                    except (self.sr.UnknownValueError, self.sr.RequestError):
-                        self.barge_text = ""
-                    print(f"✋ Перебили: {self.barge_text or '(не разобрал)'}")
+                        quiet = quiet + chunk_sec if rms(data) <= trigger else 0.0
+                        if quiet >= 0.5 and time.time() - t0 > 0.8:
+                            break
+                    heard = recognize(frames)
+                    hit, rest = self._barge_words(heard) if heard else (False, "")
+                    if not hit:
+                        if heard:
+                            print(f"   (слышу «{heard[:60]}» — это не мне, продолжаю)")
+                        drain()
+                        pre.clear()
+                        loud = 0
+                        continue
+                    pygame.mixer.music.stop()
+                    more = rest_of_phrase()
+                    self.barge_text = f"{rest} {more}".strip()
+                    print(f"✋ Перебили: {heard}{' ' + more if more else ''}")
                     return
         except Exception as e:  # noqa: BLE001 — микрофон занят и т.п.: просто говорим дальше
             print(f"(перебивание недоступно: {e})")
