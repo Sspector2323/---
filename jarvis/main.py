@@ -13,7 +13,7 @@ import webbrowser
 
 from core import config, dashboard
 from core import fillers
-from core.quick import try_quick
+from core.quick import is_quick, try_quick
 from core.tools.tasks import due_reminders
 
 STOP_WORDS = ("выключись", "отключись", "завершить работу", "пока джарвис", "выход")
@@ -27,6 +27,19 @@ def strip_wake(text: str) -> str | None:
         if w in low:
             return re.sub(rf"\b{re.escape(w)}\b[,!.]?", "", text, flags=re.I).strip(" ,.!")
     return None
+
+
+def hear_rest(io, text: str, text_mode: bool) -> str:
+    """Вы сделали паузу — Джарвис ещё секунду слушает и приклеивает продолжение к той же команде."""
+    if text_mode:
+        return text
+    for _ in range(4):
+        more = io.listen(timeout=1.0, phrase_limit=45)
+        if not more:
+            break
+        print(f"🎤 …{more}")
+        text = f"{text} {more}"
+    return text
 
 
 def ask_with_fillers(io, ask, command: str) -> str:
@@ -82,6 +95,9 @@ def main():
         print("🎙 Настраиваю микрофон…")
         io = Voice()
 
+    from core.confirmer import Confirmer
+    confirmer = Confirmer(io, voice_enabled=not text_mode)
+
     if config.AI_PROVIDER == "claude_code":
         from core.brain_claude_code import ClaudeCodeBrain as Brain
     elif config.AI_PROVIDER == "openai":
@@ -89,13 +105,13 @@ def main():
     else:
         from core.brain import Brain
     try:
-        brain = Brain(confirm=io.confirm, on_status=lambda s: print("  " + s))
+        brain = Brain(confirm=confirmer.ask, on_status=lambda s: print("  " + s))
     except RuntimeError as e:
         print(f"❌ {e}")
         if config.AI_PROVIDER == "claude_code" and os.getenv("OPENAI_API_KEY"):
             print("↪ Пока работаю на мозге OpenAI. Проверьте Claude Code: в НОВОМ окне PowerShell — claude --version")
             from core.brain_openai import OpenAIBrain
-            brain = OpenAIBrain(confirm=io.confirm, on_status=lambda s: print("  " + s))
+            brain = OpenAIBrain(confirm=confirmer.ask, on_status=lambda s: print("  " + s))
         else:
             print("  Проверьте в НОВОМ окне PowerShell: claude --version. Если версия показывается — "
                   "впишите путь из команды  where.exe claude  в ⚙ Настройки → CLAUDE_PATH.")
@@ -107,7 +123,7 @@ def main():
         with lock:
             return brain.ask(text)
 
-    dashboard.BRAIN.update(ask=ask, confirm=io.confirm, say=io.say)
+    dashboard.BRAIN.update(ask=ask, confirm=confirmer.ask, say=io.say, confirmer=confirmer)
     threading.Thread(target=reminder_loop, args=(io,), daemon=True).start()
     print(f"📊 Дашборд: {url}")
 
@@ -129,7 +145,7 @@ def main():
 
     follow_up_until = 0.0  # несколько секунд после ответа можно говорить без слова «Джарвис»
     while True:
-        heard = io.listen(timeout=None if text_mode else 5, phrase_limit=15)
+        heard = io.listen(timeout=None if text_mode else 5, phrase_limit=45)
         if not heard:
             continue
         print(f"🎤 Вы: {heard}" + ("" if text_mode else f"   (⏱ распознал за {io.last_stt:.1f} с)"))
@@ -142,11 +158,13 @@ def main():
                 continue  # говорили не с Джарвисом
             if not command:
                 io.beep()  # «слушаю» — сигналом, это мгновенно
-                command = io.listen(timeout=8, phrase_limit=20)
+                command = io.listen(timeout=8, phrase_limit=45)
                 if not command:
                     continue
                 print(f"🎤 Вы: {command}")
 
+        if not is_quick(command):  # простые команды («громче») выполняем сразу, остальное — дослушиваем
+            command = hear_rest(io, command, text_mode)
         low = command.lower()
         if any(w in low for w in STOP_WORDS):
             io.say(f"Всегда к вашим услугам, {config.USER_NAME}. Отключаюсь.")

@@ -18,7 +18,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 import flask.cli  # noqa: E402
 flask.cli.show_server_banner = lambda *a, **k: None  # без служебного текста Flask в окне Джарвиса
 
-BRAIN = {"ask": None, "confirm": None, "say": None}
+BRAIN = {"ask": None, "confirm": None, "say": None, "confirmer": None}
 _ask_lock = threading.Lock()
 
 # Секрет этого запуска: без него дашборд не примет изменения. Чужие сайты, открытые в том же
@@ -60,8 +60,11 @@ SETTINGS = [
     ("EMAIL_PASSWORD", "Пароль приложения", "secret", "xxxx xxxx xxxx xxxx", "email"),
     ("TTS_ENGINE", "Какой голос первым: edge (бесплатный) или openai (стабильный)", "select", ["edge", "openai"], "voice"),
     ("TTS_VOICE", "Голос Microsoft", "select", ["ru-RU-DmitryNeural", "ru-RU-SvetlanaNeural"], "voice"),
-    ("OPENAI_VOICE", "Голос OpenAI", "select", ["onyx", "ash", "echo", "fable", "sage", "ballad"], "voice"),
+    ("OPENAI_VOICE", "Голос OpenAI (onyx — самый низкий и бархатный)", "select", ["onyx", "ash", "ballad", "echo", "sage", "fable"], "voice"),
     ("OFFLINE_VOICE", "Запасной голос Windows, если остальные не отвечают", "select", ["true", "false"], "voice"),
+    ("VOICE_SPEED", "Темп речи (1.0 — обычный, 1.12 — чуть быстрее)", "select", ["1.0", "1.05", "1.12", "1.2", "1.3"], "voice"),
+    ("VOICE_PITCH", "Высота голоса Microsoft (меньше — глубже)", "select", ["-6Hz", "-12Hz", "-18Hz", "+0Hz"], "voice"),
+    ("PAUSE_SECONDS", "Пауза, после которой фраза считается законченной (сек)", "select", ["0.8", "1.0", "1.3", "1.6", "2.0"], "voice"),
     ("WAKE_WORDS", "Слова-активаторы", "text", "джарвис,jarvis", "voice"),
     ("USER_NAME", "Как к вам обращаться", "text", "Сабина", "look"),
     ("GREETING", "Приветствие при запуске ({user} — имя)", "text", "Моё почтение, {user}. Я к вашим услугам.", "look"),
@@ -72,7 +75,7 @@ SETTINGS = [
     ("WORKSPACE_URLS", "Рабочая зона: сайты через запятую", "text", "https://railway.com/dashboard,…", "look"),
     ("CONFIRM_DANGEROUS", "Спрашивать «да/нет» перед опасными действиями", "select", ["true", "false"], "look"),
 ]
-NEEDS_RESTART = {"AI_PROVIDER", "INTRO_ANIMATION", "DASHBOARD_SCREENS"}
+NEEDS_RESTART = {"AI_PROVIDER", "INTRO_ANIMATION", "DASHBOARD_SCREENS", "PAUSE_SECONDS", "WAKE_WORDS"}
 SECRET_KEYS = {k for k, _, kind, *_ in SETTINGS if kind == "secret"}
 
 
@@ -157,6 +160,11 @@ def _apply_live(updates: dict):
         cur = getattr(config, k, None)
         if isinstance(cur, bool):
             setattr(config, k, v.lower() in ("1", "true", "yes", "да"))
+        elif isinstance(cur, float):
+            try:
+                setattr(config, k, float(v))
+            except ValueError:
+                pass
         elif isinstance(cur, list):
             setattr(config, k, [w.strip().lower() for w in v.split(",") if w.strip()])
         elif isinstance(cur, str) or cur is None:
@@ -350,10 +358,22 @@ def ask():
 
 @app.post("/api/confirm")
 def confirm():
-    """Claude Code (через MCP-сервер) спрашивает разрешение — задаём вопрос голосом."""
+    """Claude Code (через MCP-сервер) спрашивает разрешение — голосом и окном на дашборде."""
     fn = BRAIN["confirm"]
     question = request.get_json(force=True).get("question", "")
     return jsonify(ok=bool(fn and fn(question)))
+
+
+@app.get("/api/pending")
+def pending():
+    c = BRAIN.get("confirmer")
+    return jsonify(c.listing() if c else [])
+
+
+@app.post("/api/pending/<cid>")
+def pending_answer(cid: str):
+    c = BRAIN.get("confirmer")
+    return jsonify(ok=bool(c and c.answer(cid, bool(request.get_json(force=True).get("yes")))))
 
 
 def start(ask_fn=None, confirm_fn=None):

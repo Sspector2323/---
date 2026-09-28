@@ -51,8 +51,17 @@ EFFORT = os.getenv("JARVIS_EFFORT", "low")
 WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "джарвис,jarvis").split(",") if w.strip()]
 TTS_VOICE = os.getenv("TTS_VOICE", "ru-RU-DmitryNeural")
 # Какой голос пробовать первым: edge (бесплатный Microsoft) или openai (стабильный, нужен OPENAI_API_KEY)
-TTS_ENGINE = os.getenv("TTS_ENGINE", "edge").strip().lower()
-OPENAI_VOICE = os.getenv("OPENAI_VOICE", "onyx").strip()  # onyx, ash, echo, fable, sage…
+# по умолчанию — голос OpenAI, если есть ключ: он глубже и живее бесплатного
+TTS_ENGINE = os.getenv("TTS_ENGINE", "openai" if os.getenv("OPENAI_API_KEY") else "edge").strip().lower()
+OPENAI_VOICE = os.getenv("OPENAI_VOICE", "onyx").strip()  # onyx — самый низкий и бархатный
+VOICE_SPEED = float(os.getenv("VOICE_SPEED", "1.12") or 1.12)   # 1.0 — обычный темп, 1.12 — чуть быстрее
+VOICE_PITCH = os.getenv("VOICE_PITCH", "-12Hz").strip()         # для голоса Microsoft: ниже = глубже
+VOICE_STYLE = os.getenv("VOICE_STYLE", (
+    "Голос: низкий, глубокий, бархатный мужской баритон — тёплый, обволакивающий, уверенный. "
+    "Темп: чуть быстрее обычного, собранно, без затянутых пауз. "
+    "Манера: безупречный британский дворецкий — спокойно, учтиво, с едва заметной иронией. Говори по-русски.")).strip()
+# Сколько секунд тишины считать концом фразы (больше — можно делать паузы, не боясь, что Джарвис перебьёт)
+PAUSE_SECONDS = float(os.getenv("PAUSE_SECONDS", "1.0") or 1.0)
 # Запасной голос Windows, если основной недоступен (на многих ПК он только женский — Irina)
 OFFLINE_VOICE = _bool("OFFLINE_VOICE", True)
 USER_NAME = os.getenv("USER_NAME", "Сабина")

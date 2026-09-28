@@ -44,6 +44,11 @@ RULES = [
 _COMPILED = [(re.compile(rf"^(?:{p})$", re.I), f) for p, f in RULES]
 
 
+def is_quick(command: str) -> bool:
+    text = re.sub(r"[^\w\s]", "", command.lower()).strip()
+    return any(rx.match(text) for rx, _ in _COMPILED)
+
+
 def try_quick(command: str) -> str | None:
     """Вернуть ответ, если команда простая, иначе None."""
     text = re.sub(r"[^\w\s]", "", command.lower()).strip()

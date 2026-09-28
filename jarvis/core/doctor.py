@@ -118,6 +118,17 @@ def main():
                 for ln in STATUS["detail"].splitlines()[-6:]:
                     print("     │ " + ln[:110])
 
+    print("\n— Cursor и Codex —")
+    from .integrations import status as istatus, CURSOR_MCP, CODEX_CFG
+    for it in istatus():
+        if it["name"] in ("Cursor", "Codex"):
+            print(f"  {OK if it['ok'] else WARN} {it['name']}: {it['note']}")
+    from .finder import find
+    if not find("codex") and CODEX_CFG.exists():
+        print(f"  {WARN} Codex: настройки есть, но программа codex (CLI) не найдена — голосовые задачи для Codex "
+              "не заработают. Установка: npm install -g @openai/codex")
+    print(f"  файлы подключения: {CURSOR_MCP}  |  {CODEX_CFG}")
+
     print("\n— Голос —")
     try:
         import edge_tts  # noqa: F401

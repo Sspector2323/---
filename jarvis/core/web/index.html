@@ -179,6 +179,8 @@
            transform: translateY(20px); opacity: 0; transition: .25s; pointer-events: none; white-space: pre-wrap; }
   .toast.show { transform: none; opacity: 1; }
 
+  .confirm-sheet { border-color: rgba(251,191,36,.5); box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 30px rgba(251,191,36,.25); }
+  .confirm-ic { font-size: 34px; }
   ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 8px; }
 
   /* Раскладка по мониторам: ?view=work (левый) / ?view=life (правый) */
@@ -272,6 +274,12 @@
 
 <div class="modal" id="modal" onclick="if (event.target === this) closeModal()"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
+<div class="modal" id="confirmBox" style="z-index:70"><div class="sheet confirm-sheet">
+  <div class="confirm-ic">⚠️</div><h3>Джарвис просит разрешения</h3>
+  <div class="body" id="confirmQ"></div>
+  <div class="row"><button class="btn primary" id="confirmYes">Да, разрешаю</button>
+  <button class="btn danger" id="confirmNo">Нет</button><span class="muted">Можно ответить и голосом: «да» или «нет»</span></div>
+</div></div>
 
 <script>
 const TOKEN = "__TOKEN__";
@@ -538,6 +546,29 @@ $("noteForm").onsubmit = async e => { e.preventDefault(); const v = $("noteText"
 $("memForm").onsubmit = async e => { e.preventDefault(); const k = $("memKey").value.trim(), v = $("memVal").value.trim(); if (!k || !v) return;
   await tool("remember", {key: k, value: v}); $("memKey").value = $("memVal").value = ""; };
 (() => { const d = new Date(Date.now() + 3600e3); d.setMinutes(0); $("remAt").value = new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); })();
+
+// ---------- Подтверждения опасных действий ----------
+let CONFIRM_ID = null;
+async function pollConfirm() {
+  try {
+    const list = await api("/api/pending");
+    const box = $("confirmBox");
+    if (list.length) {
+      if (CONFIRM_ID !== list[0].id) {
+        CONFIRM_ID = list[0].id; $("confirmQ").textContent = list[0].question;
+        box.classList.add("show");
+      }
+    } else if (box.classList.contains("show")) { box.classList.remove("show"); CONFIRM_ID = null; }
+  } catch {}
+}
+async function answerConfirm(yes) {
+  if (!CONFIRM_ID) return;
+  await post(`/api/pending/${CONFIRM_ID}`, {yes}); $("confirmBox").classList.remove("show");
+  toast(yes ? "Разрешено" : "Отменено"); CONFIRM_ID = null;
+}
+$("confirmYes").onclick = () => answerConfirm(true);
+$("confirmNo").onclick = () => answerConfirm(false);
+setInterval(pollConfirm, 1200);
 
 tickClock(); setInterval(tickClock, 10000);
 refresh(); setInterval(refresh, 5000);

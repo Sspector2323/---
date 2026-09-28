@@ -16,8 +16,8 @@ class Voice:
         self.sr = sr
         self.rec = sr.Recognizer()
         # через сколько секунд тишины фраза считается законченной (меньше = быстрее реакция)
-        self.rec.pause_threshold = 0.6
-        self.rec.non_speaking_duration = 0.4
+        self.rec.pause_threshold = config.PAUSE_SECONDS
+        self.rec.non_speaking_duration = min(0.5, config.PAUSE_SECONDS)
         self.rec.dynamic_energy_threshold = True
         self.mic = sr.Microphone()
         self.lock = threading.Lock()  # чтобы не говорить двумя голосами сразу
@@ -40,7 +40,7 @@ class Voice:
             print("\a", end="", flush=True)
 
     # ---------- Слух ----------
-    def listen(self, timeout: float | None = None, phrase_limit: float = 15) -> str | None:
+    def listen(self, timeout: float | None = None, phrase_limit: float = 45) -> str | None:
         try:
             with self.mic as src:
                 audio = self.rec.listen(src, timeout=timeout, phrase_time_limit=phrase_limit)
@@ -73,7 +73,8 @@ class Voice:
         import hashlib
         folder = config.DATA_DIR / "tts_cache"
         folder.mkdir(exist_ok=True)
-        key = hashlib.md5(f"{config.TTS_ENGINE}|{config.TTS_VOICE}|{config.OPENAI_VOICE}|{text}".encode()).hexdigest()
+        key = hashlib.md5(f"{config.TTS_ENGINE}|{config.TTS_VOICE}|{config.OPENAI_VOICE}|{config.VOICE_SPEED}|"
+                          f"{config.VOICE_PITCH}|{config.VOICE_STYLE}|{text}".encode()).hexdigest()
         return folder / f"{key}.mp3"
 
     def prewarm(self, phrases):
@@ -118,7 +119,8 @@ class Voice:
         import edge_tts
         fd, path = tempfile.mkstemp(suffix=".mp3")
         os.close(fd)
-        asyncio.run(edge_tts.Communicate(text, config.TTS_VOICE, rate="+8%").save(path))
+        rate = f"{round((config.VOICE_SPEED - 1) * 100):+d}%"
+        asyncio.run(edge_tts.Communicate(text, config.TTS_VOICE, rate=rate, pitch=config.VOICE_PITCH).save(path))
         if os.path.getsize(path) == 0:
             raise RuntimeError("пустой звук")
         return path
@@ -128,11 +130,15 @@ class Voice:
         fd, path = tempfile.mkstemp(suffix=".mp3")
         os.close(fd)
         client = self.__dict__.setdefault("_openai", openai.OpenAI())
-        with client.audio.speech.with_streaming_response.create(
-                model="gpt-4o-mini-tts", voice=config.OPENAI_VOICE, input=text, response_format="mp3",
-                instructions="Говори по-русски спокойным, учтивым, слегка торжественным голосом британского дворецкого.",
-        ) as r:
-            r.stream_to_file(path)
+        params = dict(model="gpt-4o-mini-tts", voice=config.OPENAI_VOICE, input=text, response_format="mp3",
+                      instructions=config.VOICE_STYLE, speed=config.VOICE_SPEED)
+        try:
+            with client.audio.speech.with_streaming_response.create(**params) as r:
+                r.stream_to_file(path)
+        except openai.BadRequestError:  # если модель не принимает speed — темп задаём только инструкцией
+            params.pop("speed")
+            with client.audio.speech.with_streaming_response.create(**params) as r:
+                r.stream_to_file(path)
         return path
 
     def _play(self, path: str, keep: bool = False):

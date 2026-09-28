@@ -121,13 +121,9 @@ curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del in
 
 Идея: один Джарвис на все инструменты. В Cursor и Codex у ИИ появляются умения Джарвиса: задачи Notion, штаб, GitHub, дела, почта, управление ПК. Итоги работы они пишут в общий штаб.
 
-1. Установите **Cursor**: https://cursor.com. В Cursor: Ctrl+Shift+P → «Install 'cursor' command».
-2. Установите **Codex CLI**. Нужен Node.js (https://nodejs.org). В PowerShell:
-   ```powershell
-   npm install -g @openai/codex
-   codex login
-   ```
-3. Запустите **`connect_editors.bat`** в папке `jarvis`. Он сам пропишет Джарвиса в Cursor (`~/.cursor/mcp.json`) и Codex (`~/.codex/config.toml` + `AGENTS.md`) и скопирует правила для Cursor в буфер. Их нужно вставить в Cursor → Settings → Rules → User Rules.
+1. Установите **Cursor** (https://cursor.com) и войдите в аккаунт.
+2. Установите **Codex**. Для голосовых задач («поручи Кодексу…») нужна консольная версия: установите Node.js (https://nodejs.org), затем в PowerShell выполните `npm install -g @openai/codex` и `codex login` (вход через аккаунт ChatGPT).
+3. **Закройте Cursor и Codex** и запустите **`connect_editors.bat`** в папке `jarvis`. Он сам пропишет Джарвиса в Cursor (`~/.cursor/mcp.json`) и Codex (`~/.codex/config.toml` + `AGENTS.md`) и скопирует правила для Cursor в буфер. Их нужно вставить в Cursor → Settings → Rules → User Rules.
 4. Перезапустите Cursor и Codex. На дашборде в «Подключениях» они загорятся зелёным.
 
 Голосом: «Джарвис, **открой таймкодер в Курсоре**», «Джарвис, **поручи Кодексу** в дайс боте добавить команду /help». Опасные действия из Cursor и Codex (выключить ПК, отправить письмо и т. п.) подтверждаются голосом через запущенного Джарвиса. Если он выключен, такие действия запрещены.

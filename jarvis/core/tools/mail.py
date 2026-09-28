@@ -160,3 +160,120 @@ def send_email(to: str, subject: str, body: str):
         s.login(config.EMAIL_ADDRESS, config.EMAIL_PASSWORD)
         s.send_message(msg)
     return f"Письмо отправлено: {parseaddr(to)[1] or to}"
+
+
+# ---------- Разбор почты: ярлыки, папки, массовые действия ----------
+
+def _utf7_encode(name: str) -> str:
+    """Имя папки → modified UTF-7 (так IMAP хранит кириллицу: «Квитанции» → &BBoEMgQ4BEI...-)."""
+    import base64
+    out, buf = [], []
+
+    def flush():
+        if buf:
+            b = base64.b64encode("".join(buf).encode("utf-16-be")).decode().rstrip("=").replace("/", ",")
+            out.append("&" + b + "-")
+            buf.clear()
+    for ch in name:
+        if 0x20 <= ord(ch) <= 0x7E:
+            flush()
+            out.append("&-" if ch == "&" else ch)
+        else:
+            buf.append(ch)
+    flush()
+    return "".join(out)
+
+
+def _utf7_decode(name: str) -> str:
+    import base64
+    import re
+    return re.sub(r"&([^-]*)-", lambda m: "&" if not m.group(1) else base64.b64decode(
+        m.group(1).replace(",", "/") + "=" * (-len(m.group(1)) % 4)).decode("utf-16-be"), name)
+
+
+def _is_gmail() -> bool:
+    return "gmail" in _hosts()[0]
+
+
+def _folders(m) -> list[str]:
+    import re
+    names = []
+    for line in m.list()[1] or []:
+        raw = line.decode(errors="replace")
+        mt = re.search(r'"?([^"]+)"?\s*$', raw)
+        if mt:
+            names.append(_utf7_decode(mt.group(1)))
+    return names
+
+
+def _search(m, query: str, field: str, unread_only: bool, limit: int) -> list[bytes]:
+    crit = {"from": "FROM", "subject": "SUBJECT", "text": "TEXT"}.get(field, "TEXT")
+    m.literal = query.encode("utf-8")
+    args = ["CHARSET", "UTF-8"] + (["UNSEEN"] if unread_only else []) + [crit]
+    _, data = m.uid("search", *args)
+    return data[0].split()[-limit:]
+
+
+@tool("email_folders", "Список папок и ярлыков почты.")
+def email_folders():
+    m = _imap()
+    try:
+        return "\n".join(_folders(m)) or "Папок нет"
+    finally:
+        m.logout()
+
+
+@tool("organize_email",
+      "Разобрать почту массово: найти письма (по отправителю, теме или тексту) и сделать с ними действие: "
+      "label — поставить ярлык/положить в папку (создаётся сама), read — пометить прочитанными, "
+      "archive — убрать из входящих (в Gmail письма остаются в «Вся почта»), move — переместить в папку, "
+      "delete — удалить. Используй вместо скриптов для любых операций с почтой.",
+      {"query": S("Что искать: адрес/имя отправителя, слово из темы или текста"),
+       "field": S("Где искать", enum=["from", "subject", "text"]),
+       "action": S("Действие", enum=["label", "read", "archive", "move", "delete"]),
+       "folder": S("Ярлык/папка для label и move, например «Квитанции»"),
+       "unread_only": {"type": "boolean", "description": "Только непрочитанные"},
+       "limit": I("Максимум писем за раз, по умолчанию 200")},
+      ["query", "action"], dangerous=True)
+def organize_email(query: str, action: str, field: str = "text", folder: str = "", unread_only: bool = False,
+                   limit: int = 200):
+    if action in ("label", "move") and not folder:
+        return "Укажите ярлык или папку"
+    m = _imap()
+    try:
+        m.select("INBOX")
+        uids = _search(m, query, field, unread_only, limit)
+        if not uids:
+            return f"Писем по запросу «{query}» не нашёл"
+        ids = b",".join(uids).decode()
+        enc = _utf7_encode(folder) if folder else ""
+        if folder and folder not in _folders(m):
+            m.create(f'"{enc}"')
+        if action == "read":
+            m.uid("store", ids, "+FLAGS", "\\Seen")
+        elif action == "label":
+            if _is_gmail():
+                m.uid("store", ids, "+X-GM-LABELS", f'"{enc}"')
+            else:
+                m.uid("copy", ids, f'"{enc}"')
+        elif action in ("move", "archive"):
+            if action == "move":
+                m.uid("copy", ids, f'"{enc}"')
+            elif not _is_gmail():
+                if "Archive" not in _folders(m):
+                    m.create("Archive")
+                m.uid("copy", ids, "Archive")
+            m.uid("store", ids, "+FLAGS", "\\Deleted")  # в Gmail это просто снимает ярлык «Входящие»
+            m.expunge()
+        elif action == "delete":
+            if _is_gmail():
+                m.uid("copy", ids, '"[Gmail]/Trash"' if "[Gmail]/Trash" in _folders(m) else '"[Gmail]/Корзина"')
+            m.uid("store", ids, "+FLAGS", "\\Deleted")
+            m.expunge()
+        done = {"label": f"поставил ярлык «{folder}»", "read": "пометил прочитанными", "archive": "убрал в архив",
+                "move": f"переместил в «{folder}»", "delete": "удалил"}[action]
+        from ..briefing import _plural
+        n = len(uids)
+        return f"Готово: {n} {_plural(n, 'письмо', 'письма', 'писем')} — {done}."
+    finally:
+        m.logout()
