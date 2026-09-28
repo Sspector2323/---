@@ -133,7 +133,10 @@ async function load() {
       ${g.steps.length ? `<ol class="steps">${g.steps.map(s => `<li>${s}</li>`).join("")}</ol>` : ""}
       ${g.links.length ? `<div class="links">${g.links.map(([u, t]) => `<a class="btn" href="${u}" target="_blank">${t}</a>`).join("")}</div>` : ""}
       <form data-g="${g.id}">
-        ${items.filter(i => i.group === g.id).map(field).join("")}
+        ${items.some(i => i.group === g.id) ? items.filter(i => i.group === g.id).map(field).join("")
+          : (g.id === "look" ? "" : `<p class="msg bad">Полей нет, потому что запущен старый Джарвис. Закройте его чёрное окно
+             и запустите <code>start_jarvis.bat</code> заново. Или впишите данные прямо в файл: дважды кликните
+             <code>edit_env.bat</code>.</p>`)}
         <div class="actions"><button class="btn primary">Сохранить</button>
           ${g.test.map(([svc, t]) => `<button type="button" class="btn" onclick="test('${svc}', this)">${t}</button>`).join("")}
           <span class="msg"></span></div>
