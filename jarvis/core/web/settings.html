@@ -100,8 +100,12 @@ const GROUPS = [
      "Впишите адрес и пароль → «Сохранить» → «Проверить почту»."],
    links: [["https://myaccount.google.com/apppasswords", "Gmail ↗"], ["https://id.yandex.ru/security/app-passwords", "Яндекс ↗"], ["https://account.mail.ru/user/2-step-auth/passwords", "Mail.ru ↗"]]},
   {id: "voice", ic: "🎙", title: "Голос", test: [["voice", "Проверить голос"]],
-   steps: ["Если бесплатный голос Microsoft не отвечает — выберите первым <code>openai</code>: мужской голос дворецкого, стабильно (нужен ключ OpenAI).",
-           "Запасной голос Windows обычно женский — его можно выключить."], links: []},
+   steps: ["<b>Ваш голос из ElevenLabs:</b> elevenlabs.io → Profile → <b>API Keys</b> → создайте ключ → вставьте ниже. "
+           + "Затем <b>Voices</b> → ваш голос → «⋯» → <b>Copy Voice ID</b> → вставьте ниже. Первым выберите <code>elevenlabs</code> → Сохранить → «Проверить голос».",
+           "Модель <code>eleven_flash_v2_5</code> отвечает быстрее всех — для живого разговора; <code>eleven_multilingual_v2</code> — выразительнее, но медленнее.",
+           "Без ElevenLabs: <code>openai</code> — стабильный голос со стилями «дворецкий» и «хриплый бас».",
+           "Запасной голос Windows обычно женский — его можно выключить."],
+   links: [["https://elevenlabs.io/app/settings/api-keys", "Ключи ElevenLabs ↗"], ["https://elevenlabs.io/app/voice-lab", "Мои голоса ↗"]]},
   {id: "look", ic: "✨", title: "Обращение, запуск и мониторы", test: [], steps: [], links: []},
 ];
 

@@ -75,6 +75,21 @@ def send_file(path: str, caption: str = "", chat_id: int | None = None) -> bool:
 def send_voice(text: str, chat_id: int) -> bool:
     """Ответ голосом (OGG/Opus — как обычное голосовое в Телеграме)."""
     import os
+    from . import tts_eleven
+    from .speech import for_speech
+    if config.TTS_ENGINE == "elevenlabs" and tts_eleven.enabled():
+        fd, path = tempfile.mkstemp(suffix=".mp3")
+        os.close(fd)
+        try:
+            tts_eleven.synth_to_file(for_speech(text)[:3500], path)
+            with open(path, "rb") as f:  # sendVoice принимает и mp3
+                _call("sendVoice", chat_id=chat_id, files={"voice": ("jarvis.mp3", f, "audio/mpeg")})
+            return True
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
     if not os.getenv("OPENAI_API_KEY"):
         return False
     import openai

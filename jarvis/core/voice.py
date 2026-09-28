@@ -76,10 +76,12 @@ class Voice:
     _down: dict = {}
 
     def _engines(self) -> list[str]:
+        from . import tts_eleven
         pref = config.TTS_ENGINE
-        order = {"edge": ["edge", "openai"], "openai": ["openai", "edge"]}.get(pref, ["edge", "openai"])
-        return [e for e in order if not (e == "openai" and not os.getenv("OPENAI_API_KEY"))
-                and self._down.get(e, 0) < time.time()]
+        order = {"edge": ["edge", "openai", "elevenlabs"], "openai": ["openai", "elevenlabs", "edge"],
+                 "elevenlabs": ["elevenlabs", "openai", "edge"]}.get(pref, ["edge", "openai"])
+        available = {"openai": bool(os.getenv("OPENAI_API_KEY")), "elevenlabs": tts_eleven.enabled(), "edge": True}
+        return [e for e in order if available[e] and self._down.get(e, 0) < time.time()]
 
     confirming = False  # идёт голосовое подтверждение — перебивки молчат
 
@@ -87,7 +89,8 @@ class Voice:
         import hashlib
         folder = config.DATA_DIR / "tts_cache"
         folder.mkdir(exist_ok=True)
-        key = hashlib.md5(f"{config.TTS_ENGINE}|{config.TTS_VOICE}|{config.OPENAI_VOICE}|{config.VOICE_SPEED}|"
+        key = hashlib.md5(f"{config.TTS_ENGINE}|{config.TTS_VOICE}|{config.OPENAI_VOICE}|{config.ELEVENLABS_VOICE_ID}|"
+                          f"{config.ELEVENLABS_MODEL}|{config.VOICE_SPEED}|"
                           f"{config.VOICE_PITCH}|{config.VOICE_STYLE}|{text}".encode()).hexdigest()
         return folder / f"{key}.mp3"
 
@@ -166,6 +169,12 @@ class Voice:
         if os.path.getsize(path) == 0:
             raise RuntimeError("пустой звук")
         return path
+
+    def _synth_elevenlabs(self, text: str) -> str:
+        from . import tts_eleven
+        fd, path = tempfile.mkstemp(suffix=".mp3")
+        os.close(fd)
+        return tts_eleven.synth_to_file(text, path)
 
     def _synth_openai(self, text: str) -> str:
         import openai

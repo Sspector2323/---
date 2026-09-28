@@ -53,8 +53,14 @@ EFFORT = os.getenv("JARVIS_EFFORT", "low")
 WAKE_WORDS = [w.strip().lower() for w in os.getenv("WAKE_WORDS", "джарвис,jarvis").split(",") if w.strip()]
 TTS_VOICE = os.getenv("TTS_VOICE", "ru-RU-DmitryNeural")
 # Какой голос пробовать первым: edge (бесплатный Microsoft) или openai (стабильный, нужен OPENAI_API_KEY)
-# по умолчанию — голос OpenAI, если есть ключ: он глубже и живее бесплатного
-TTS_ENGINE = os.getenv("TTS_ENGINE", "openai" if os.getenv("OPENAI_API_KEY") else "edge").strip().lower()
+# Голос ElevenLabs (ваш собственный, созданный там): ключ API и ID голоса
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "").strip()
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "").strip()
+# eleven_flash_v2_5 — самый быстрый отклик; eleven_multilingual_v2 — чуть выразительнее, но медленнее
+ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "eleven_flash_v2_5").strip()
+# по умолчанию: ваш голос ElevenLabs, если настроен; иначе OpenAI; иначе бесплатный Microsoft
+TTS_ENGINE = os.getenv("TTS_ENGINE", "elevenlabs" if ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID else
+                       "openai" if os.getenv("OPENAI_API_KEY") else "edge").strip().lower()
 OPENAI_VOICE = os.getenv("OPENAI_VOICE", "onyx").strip()  # onyx — самый низкий и бархатный
 VOICE_SPEED = float(os.getenv("VOICE_SPEED", "1.12") or 1.12)   # 1.0 — обычный темп, 1.12 — чуть быстрее
 VOICE_PITCH = os.getenv("VOICE_PITCH", "-12Hz").strip()         # для голоса Microsoft: ниже = глубже
