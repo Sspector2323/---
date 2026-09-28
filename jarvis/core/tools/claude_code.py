@@ -1,5 +1,4 @@
 """Делегирование сложных задач Claude Code, если он установлен на компьютере."""
-import subprocess
 from pathlib import Path
 
 from . import S, tool
@@ -17,6 +16,7 @@ def claude_code(task: str, folder: str = "~"):
         return ("Claude Code не установлен. Установка: Windows — `irm https://claude.ai/install.ps1 | iex` в PowerShell; "
                 "Mac/Linux — `curl -fsSL https://claude.ai/install.sh | bash`.")
     cwd = Path(folder).expanduser()
-    r = subprocess.run([exe, "-p", task, "--permission-mode", "acceptEdits"], cwd=cwd,
+    from ..brain_claude_code import _clean_env, run_claude
+    r = run_claude([exe, "-p", task, "--permission-mode", "acceptEdits"], cwd=cwd, env=_clean_env(),
                        capture_output=True, text=True, timeout=1800, encoding="utf-8", errors="replace")
     return (r.stdout or r.stderr).strip()[-6000:] or "Готово"

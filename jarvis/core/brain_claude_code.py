@@ -33,6 +33,18 @@ STATUS = {"ok": None, "note": "проверяю…", "detail": ""}
 AUTH_WORDS = ("401", "authenticat", "oauth", "log in", "login", "not logged", "invalid api key")
 
 
+import threading as _threading
+
+# Никогда не запускаем два Claude Code одновременно: параллельные процессы обновляют токен входа
+# наперегонки и могут его отозвать («401 OAuth access token is invalid»)
+RUN_LOCK = _threading.Lock()
+
+
+def run_claude(cmd, **kw):
+    with RUN_LOCK:
+        return subprocess.run(cmd, **kw)  # noqa: S603
+
+
 TOKEN_VARS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN")
 
 
@@ -74,7 +86,7 @@ def check(exe: str | None = None) -> dict:
         STATUS.update(ok=False, note="не установлен — login_claude.bat")
         return STATUS
     try:
-        r = subprocess.run([exe, "-p", "Ответь одним словом: ок", "--output-format", "json", "--model", "haiku"],
+        r = run_claude([exe, "-p", "Ответь одним словом: ок", "--output-format", "json", "--model", "haiku"],
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90,
                            env=_clean_env(), cwd=Path.home())
         out = (r.stdout or "") + (r.stderr or "")
@@ -176,7 +188,7 @@ class ClaudeCodeBrain:
         self.on_status("⚙ передаю Claude Code…")
         try:
             env = _clean_env()
-            r = subprocess.run(cmd, cwd=self.cwd, capture_output=True, text=True, encoding="utf-8",
+            r = run_claude(cmd, cwd=self.cwd, capture_output=True, text=True, encoding="utf-8",
                                errors="replace", timeout=900, env=env)
             data = json.loads(r.stdout.strip().splitlines()[-1]) if r.stdout.strip() else {}
         except subprocess.TimeoutExpired:
