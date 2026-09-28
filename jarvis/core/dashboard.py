@@ -56,6 +56,7 @@ SETTINGS = [
     ("NOTION_HUB_PAGE", "Страница «общий штаб» (id)", "text", "3e84ea9860c981a7a7c5deaf8aafd8f8", "notion"),
     ("GITHUB_TOKEN", "Токен GitHub", "secret", "github_pat_…", "github"),
     ("PROJECTS_DIR", "Папка с проектами на компьютере", "text", "C:\\Users\\вы\\Projects", "github"),
+    ("OUTPUT_DIR", "Куда складывать готовые документы и PDF", "text", "C:\\Users\\вы\\Documents\\Jarvis", "look"),
     ("EDITOR", "Редактор по умолчанию", "select", ["cursor", "vscode"], "github"),
     ("TELEGRAM_BOT_TOKEN", "Токен бота от @BotFather", "secret", "123456789:AA…", "telegram"),
     ("TELEGRAM_OWNER_ID", "Ваш Telegram ID (заполнится сам после /start с кодом)", "text", "", "telegram"),

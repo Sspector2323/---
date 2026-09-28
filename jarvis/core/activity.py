@@ -75,6 +75,7 @@ def _short(v, n=90) -> str:
 
 
 LABELS = {
+    "make_pdf": "Создаёт PDF-документ",
     # Джарвис
     "shutdown_computer": "Выключение компьютера", "restart_computer": "Перезагрузка компьютера",
     "sleep_computer": "Спящий режим", "lock_computer": "Блокирует экран", "cancel_shutdown": "Отменяет выключение",

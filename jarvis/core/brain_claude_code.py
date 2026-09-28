@@ -18,11 +18,14 @@ from .brain import SYSTEM
 from .tools.info import DAYS
 from .tools.tasks import memory_text
 
-EXTRA = """
+EXTRA = f"""
 Ты работаешь внутри Claude Code на компьютере пользователя (Windows), тебя вызывает голосовая оболочка «Джарвис».
 Инструменты Джарвиса доступны как mcp__jarvis__* — используй их для задач, напоминаний, заметок, памяти,
 почты, громкости, музыки, программ, питания ПК, погоды. Для файлов, команд и интернета — свои инструменты.
 Почту разбирай ТОЛЬКО через mcp__jarvis__organize_email / search_email / mark_email — не пиши для этого скрипты.
+Если просят документ, PDF, отчёт, план, файл — результат это ФАЙЛ, а не текст в ответе. PDF делай через
+mcp__jarvis__make_pdf (весь текст — в content, в markdown, структурно и по делу). Остальные файлы сохраняй
+в папку {config.OUTPUT_DIR}. Не отвечай «вот план…» текстом вместо файла.
 Итоговый ответ всегда короткий и разговорный: его прочитают вслух."""
 
 # Безопасное — выполняется без вопросов. Всё остальное (команды, запись файлов, выключение ПК,
@@ -120,6 +123,17 @@ def check(exe: str | None = None) -> dict:
     return STATUS
 
 
+def mcp_config() -> str:
+    """Инструменты Джарвиса для Claude Code (сервер MCP)."""
+    return json.dumps({"mcpServers": {"jarvis": {
+        "command": sys.executable,
+        "args": [str(Path(__file__).with_name("mcp_server.py"))],
+        "env": {"JARVIS_PORT": str(config.DASHBOARD_PORT), "JARVIS_TOKEN": dashboard.TOKEN,
+                "CONFIRM_DANGEROUS": "true" if config.CONFIRM_DANGEROUS else "false",
+                "JARVIS_HOST": "claude_code", "PYTHONIOENCODING": "utf-8"},
+    }}})
+
+
 class ClaudeCodeBrain:
     def __init__(self, confirm: Callable[[str], bool], on_status: Callable[[str], None] = print):
         from .finder import find
@@ -215,13 +229,7 @@ class ClaudeCodeBrain:
             return result or {}, "".join(err_lines)
 
     def _mcp_config(self) -> str:
-        return json.dumps({"mcpServers": {"jarvis": {
-            "command": sys.executable,
-            "args": [str(Path(__file__).with_name("mcp_server.py"))],
-            "env": {"JARVIS_PORT": str(config.DASHBOARD_PORT), "JARVIS_TOKEN": dashboard.TOKEN,
-                    "CONFIRM_DANGEROUS": "true" if config.CONFIRM_DANGEROUS else "false",
-                    "JARVIS_HOST": "claude_code", "PYTHONIOENCODING": "utf-8"},
-        }}})
+        return mcp_config()
 
     def _allowed(self) -> list[str]:
         safe_jarvis = [f"mcp__jarvis__{n}" for n, t in self.tools.items() if not t.dangerous]

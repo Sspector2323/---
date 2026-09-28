@@ -117,6 +117,8 @@ NOTION_HUB_PAGE = os.getenv("NOTION_HUB_PAGE", "3e84ea9860c981a7a7c5deaf8aafd8f8
 # GitHub (токен: https://github.com/settings/tokens)
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
 PROJECTS_DIR = os.getenv("PROJECTS_DIR", str(Path.home() / "Projects"))
+# Куда Джарвис и Claude Code складывают готовые документы, PDF и прочие файлы
+OUTPUT_DIR = os.getenv("OUTPUT_DIR", "").strip() or str(Path.home() / "Documents" / "Jarvis")
 EDITOR = os.getenv("EDITOR", "cursor").strip().lower()  # редактор по умолчанию: cursor или vscode
 WORKSPACE_URLS = os.getenv("WORKSPACE_URLS", "https://railway.com/dashboard,https://github.com,"
                            "https://www.notion.so,https://claude.ai/code")

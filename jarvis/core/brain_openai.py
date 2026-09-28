@@ -51,7 +51,9 @@ class OpenAIBrain:
         system = SYSTEM.format(user=config.USER_NAME, memory=memory_text() or "пока ничего")
         if self.hybrid:
             system += ("\nОтвечай сам и быстро на разговоры, вопросы и простые действия. Если задача про код, файлы, "
-                       "проекты, требует многих шагов или глубокого анализа — вызывай delegate_to_claude.")
+                       "проекты, требует многих шагов или глубокого анализа — вызывай delegate_to_claude. Документы и PDF с "
+                       "серьёзным содержанием (планы, отчёты, анализ) тоже отдавай delegate_to_claude: передай тему, "
+                       "для кого документ и что в нём должно быть — он сам соберёт PDF.")
         return self.client.chat.completions.create(
             model=config.HYBRID_MODEL if self.hybrid else config.OPENAI_MODEL,
             messages=[{"role": "system", "content": system}] + self.messages,
