@@ -10,6 +10,20 @@ from . import config
 YES = ("да", "подтверждаю", "давай", "выполняй", "конечно", "ок", "окей", "угу", "ага", "yes", "делай")
 
 
+def _sentences(text: str) -> list[str]:
+    """Режем на куски по предложениям (не слишком мелкие), чтобы начинать говорить быстрее."""
+    import re
+    parts, buf = [], ""
+    for sent in re.split(r"(?<=[.!?…])\s+", text.strip()):
+        buf = f"{buf} {sent}".strip()
+        if len(buf) >= (15 if not parts else 90):  # первая фраза короткая — чтобы заговорить сразу
+            parts.append(buf)
+            buf = ""
+    if buf:
+        parts.append(buf)
+    return parts or [text]
+
+
 class Voice:
     def __init__(self):
         import speech_recognition as sr
@@ -91,6 +105,17 @@ class Voice:
                 except Exception:  # noqa: BLE001
                     continue
 
+    barge_text: str | None = None  # что вы сказали, перебив Джарвиса (обрабатывается как новая команда)
+
+    def _synth(self, text: str) -> str | None:
+        for engine in self._engines():
+            try:
+                return getattr(self, f"_synth_{engine}")(text)
+            except Exception as e:  # noqa: BLE001
+                self._down[engine] = time.time() + 600
+                print(f"⚠ Голос {engine} недоступен ({type(e).__name__}: {str(e)[:120]}) — пробую следующий.")
+        return None
+
     def say(self, text: str, cache: bool = False, quiet: bool = False):
         if not quiet:
             print(f"🤖 Джарвис: {text}")
@@ -98,24 +123,39 @@ class Voice:
         text = for_speech(text)  # ссылки, пути и разметку не читаем — они на экране
         if not text:
             return
+        self.barge_text = None
         cached = self._cache_path(text) if cache else None
         with self.lock:
             if cached and cached.exists():
                 self._play(str(cached), keep=True)
                 return
-            for engine in self._engines():
-                try:
-                    path = getattr(self, f"_synth_{engine}")(text)
-                    if cached:
-                        import shutil
-                        shutil.copy(path, cached)
+            if cached:  # короткая фраза-перебивка: целиком и в кэш
+                path = self._synth(text)
+                if path:
+                    import shutil
+                    shutil.copy(path, cached)
                     self._play(path)
-                    return
-                except Exception as e:  # noqa: BLE001
-                    self._down[engine] = time.time() + 600
-                    print(f"⚠ Голос {engine} недоступен ({type(e).__name__}: {str(e)[:120]}) — пробую следующий.")
-            if config.OFFLINE_VOICE:
-                self._say_offline(text)
+                elif config.OFFLINE_VOICE:
+                    self._say_offline(text)
+                return
+            # длинный ответ — по предложениям: пока звучит одно, следующее уже озвучивается
+            parts = _sentences(text)
+            box: dict = {}
+            nxt = threading.Thread(target=lambda: box.update(p=self._synth(parts[0])))
+            nxt.start()
+            for i in range(len(parts)):
+                nxt.join()
+                path = box.get("p")
+                if i + 1 < len(parts):
+                    box = {}
+                    nxt = threading.Thread(target=lambda j=i + 1, b=box: b.update(p=self._synth(parts[j])))
+                    nxt.start()
+                if path:
+                    self._play(path)
+                elif config.OFFLINE_VOICE:
+                    self._say_offline(parts[i])
+                if self.barge_text is not None:  # перебили — остальное не говорим
+                    break
 
     def _synth_edge(self, text: str) -> str:
         import edge_tts
@@ -150,6 +190,8 @@ class Voice:
                 pygame.mixer.init()
             pygame.mixer.music.load(path)
             pygame.mixer.music.play()
+            if config.BARGE_IN and not self.confirming:
+                self._watch_barge_in(pygame)
             while pygame.mixer.music.get_busy():
                 time.sleep(0.05)
             pygame.mixer.music.unload()
@@ -159,6 +201,50 @@ class Voice:
                     os.remove(path)
                 except OSError:
                     pass
+
+    def _watch_barge_in(self, pygame):
+        """Пока Джарвис говорит — слушаем микрофон. Заговорили громче его эха из колонок → он замолкает,
+        а ваша фраза записывается целиком и становится новой командой."""
+        import array
+        import math
+        from collections import deque
+
+        def rms(chunk: bytes) -> float:
+            a = array.array("h", chunk)
+            return math.sqrt(sum(x * x for x in a) / max(1, len(a)))
+
+        try:
+            with self.mic as src:
+                chunk_sec = src.CHUNK / src.SAMPLE_RATE
+                ambient = max(self.rec.energy_threshold, 150)
+                echo, started, loud = 0.0, time.time(), 0
+                pre = deque(maxlen=int(0.6 / chunk_sec))
+                while pygame.mixer.music.get_busy():
+                    data = src.stream.read(src.CHUNK)
+                    level = rms(data)
+                    pre.append(data)
+                    if time.time() - started < 0.5:  # первые полсекунды — меряем, насколько громко «эхо» Джарвиса
+                        echo = max(echo, level)
+                        continue
+                    trigger = max(ambient * config.BARGE_SENSITIVITY, echo * 1.6)
+                    loud = loud + 1 if level > trigger else 0
+                    if loud * chunk_sec < 0.3:
+                        continue
+                    pygame.mixer.music.stop()  # замолкаем
+                    frames, quiet = list(pre), 0.0
+                    while quiet < config.PAUSE_SECONDS and len(frames) * chunk_sec < 30:
+                        data = src.stream.read(src.CHUNK)
+                        frames.append(data)
+                        quiet = quiet + chunk_sec if rms(data) < ambient * 1.3 else 0.0
+                    audio = self.sr.AudioData(b"".join(frames), src.SAMPLE_RATE, src.SAMPLE_WIDTH)
+                    try:
+                        self.barge_text = self.rec.recognize_google(audio, language="ru-RU").strip()
+                    except (self.sr.UnknownValueError, self.sr.RequestError):
+                        self.barge_text = ""
+                    print(f"✋ Перебили: {self.barge_text or '(не разобрал)'}")
+                    return
+        except Exception as e:  # noqa: BLE001 — микрофон занят и т.п.: просто говорим дальше
+            print(f"(перебивание недоступно: {e})")
 
     def _say_offline(self, text: str):
         import pyttsx3
@@ -190,6 +276,7 @@ class TextIO:
 
     last_stt = 0.0
     confirming = False
+    barge_text = None
 
     def beep(self):
         pass

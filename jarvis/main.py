@@ -42,20 +42,28 @@ def hear_rest(io, text: str, text_mode: bool) -> str:
     return text
 
 
-def ask_with_fillers(io, ask, command: str) -> str:
-    """Пока мозг думает, Джарвис не молчит: сразу — фраза по теме, дальше — изредка фразы ожидания."""
+SHUT_UP = ("стоп", "хватит", "замолчи", "тихо", "стой", "подожди", "отмена", "всё", "не надо")
+
+
+def ask_with_fillers(io, ask, command: str, cancel=None) -> tuple[str | None, str | None]:
+    """Пока мозг думает, Джарвис не молчит. Если его перебили — задача отменяется,
+    возвращается (None, что сказали), и сказанное становится новой командой."""
     box = {}
     worker = threading.Thread(target=lambda: box.update(answer=ask(command)), daemon=True)
     worker.start()
     worker.join(1.0)  # быстрые ответы — без перебивок
-    if worker.is_alive() and not io.confirming:
-        io.say(fillers.first(command, config.USER_NAME), cache=True, quiet=True)
     waits = fillers.waiting(config.USER_NAME)
+    phrase = fillers.first(command, config.USER_NAME)
     while worker.is_alive():
+        if not io.confirming:
+            io.say(phrase, cache=True, quiet=True)
+            if io.barge_text is not None:  # перебили во время «секунду…» — бросаем старую задачу
+                if cancel:
+                    cancel()
+                return None, io.barge_text
         worker.join(7.0)
-        if worker.is_alive() and not io.confirming:
-            io.say(next(waits), cache=True, quiet=True)
-    return box.get("answer", "Готово.")
+        phrase = next(waits)
+    return box.get("answer", "Готово."), None
 
 
 def reminder_loop(io):
@@ -73,7 +81,7 @@ def reminder_loop(io):
 
 def main():
     text_mode = "--text" in sys.argv
-    key = {"openai": "OPENAI_API_KEY", "claude": "ANTHROPIC_API_KEY"}.get(config.AI_PROVIDER)
+    key = {"openai": "OPENAI_API_KEY", "hybrid": "OPENAI_API_KEY", "claude": "ANTHROPIC_API_KEY"}.get(config.AI_PROVIDER)
     if key and not os.getenv(key):
         print(f"❌ Не найден {key}. Откройте файл .env и вставьте ключ.")
         sys.exit(1)
@@ -106,7 +114,7 @@ def main():
 
     if config.AI_PROVIDER == "claude_code":
         from core.brain_claude_code import ClaudeCodeBrain as Brain
-    elif config.AI_PROVIDER == "openai":
+    elif config.AI_PROVIDER in ("openai", "hybrid"):
         from core.brain_openai import OpenAIBrain as Brain
     else:
         from core.brain import Brain
@@ -169,8 +177,13 @@ def main():
         threading.Timer(max(0.0, 9.5 - (time.time() - t_start)), webbrowser.open, [url]).start()
 
     follow_up_until = 0.0  # несколько секунд после ответа можно говорить без слова «Джарвис»
+    pending = None  # то, что вы сказали, перебив Джарвиса — выполняется следующей командой
     while True:
-        heard = io.listen(timeout=None if text_mode else 5, phrase_limit=45)
+        if pending is not None:
+            heard, pending = pending, None
+            follow_up_until = time.time() + 1  # после перебивания «Джарвис» говорить не нужно
+        else:
+            heard = io.listen(timeout=None if text_mode else 5, phrase_limit=45)
         if not heard:
             continue
         print(f"🎤 Вы: {heard}" + ("" if text_mode else f"   (⏱ распознал за {io.last_stt:.1f} с)"))
@@ -207,14 +220,22 @@ def main():
         if answer is not None:
             from core import activity
             activity.emit("done", f"Быстрая команда: {command}", answer or "")
+        barged = None
         if answer is None:
-            answer = ask_with_fillers(io, ask, command)
+            answer, barged = ask_with_fillers(io, ask, command, cancel=getattr(brain, "cancel", None))
             print(f"  ⏱ мозг думал {time.time() - t0:.1f} с")
-        if answer:
+        if answer and barged is None:
             t1 = time.time()
             io.say(answer)
             print(f"  ⏱ голос {time.time() - t1:.1f} с")
+            barged = io.barge_text
         follow_up_until = time.time() + 8
+        if barged is not None:  # вы перебили: замолкаем; если сказали новое — сразу выполняем
+            from core import activity
+            clean = barged.strip().lower().strip(".!,")
+            activity.emit("voice", "Вы перебили Джарвиса", barged or "(неразборчиво)")
+            if clean and clean not in SHUT_UP:
+                pending = barged
 
 
 if __name__ == "__main__":

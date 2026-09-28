@@ -94,7 +94,7 @@ def claude_item():
         return ("Claude Code", False, "не установлен — login_claude.bat", "/settings#g-brain")
     if STATUS["ok"] is False:
         return ("Claude Code", False, STATUS["note"], "/settings#g-brain")
-    note = "мозг Джарвиса · " + STATUS["note"] if config.AI_PROVIDER == "claude_code" else "установлен"
+    note = ("мозг Джарвиса · " if config.AI_PROVIDER in ("claude_code", "hybrid") else "") + (STATUS["note"] or "установлен")
     return ("Claude Code", bool(STATUS["ok"]) or config.AI_PROVIDER != "claude_code", note, "https://claude.ai/code")
 
 

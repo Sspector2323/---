@@ -25,19 +25,47 @@ class OpenAIBrain:
                                               "parameters": t.schema()["input_schema"]}}
             for t in self.tools.values()
         ]
+        self.hybrid = config.AI_PROVIDER == "hybrid"
+        self._claude = None
+        if self.hybrid:  # быстрая модель отвечает сама, большие задачи отдаёт Claude Code
+            self.tool_schemas = [s for s in self.tool_schemas if s["function"]["name"] != "claude_code"]
+            self.tool_schemas.append({"type": "function", "function": {
+                "name": "delegate_to_claude",
+                "description": "Передать задачу Claude Code (умный агент на этом ПК: код, файлы, проекты, долгие "
+                               "многошаговые дела, анализ, разбор почты, сложные вопросы). Простое делай сам.",
+                "parameters": {"type": "object", "properties": {"task": {"type": "string", "description":
+                               "Полная формулировка задачи с контекстом"}}, "required": ["task"]}}})
+
+    cancelled = False
+
+    def cancel(self):
+        """Вас перебили новой командой — сворачиваем текущую задачу на ближайшем шаге."""
+        self.cancelled = True
+        if getattr(self, "_claude", None):
+            self._claude.cancel()
 
     def reset(self):
         self.messages = []
 
     def _call(self):
         system = SYSTEM.format(user=config.USER_NAME, memory=memory_text() or "пока ничего")
+        if self.hybrid:
+            system += ("\nОтвечай сам и быстро на разговоры, вопросы и простые действия. Если задача про код, файлы, "
+                       "проекты, требует многих шагов или глубокого анализа — вызывай delegate_to_claude.")
         return self.client.chat.completions.create(
-            model=config.OPENAI_MODEL,
+            model=config.HYBRID_MODEL if self.hybrid else config.OPENAI_MODEL,
             messages=[{"role": "system", "content": system}] + self.messages,
             tools=self.tool_schemas,
         )
 
     def _run_tool(self, name: str, args: dict) -> str:
+        if name == "delegate_to_claude":
+            from . import activity
+            from .brain_claude_code import ClaudeCodeBrain
+            if self._claude is None:
+                self._claude = ClaudeCodeBrain(confirm=self.confirm, on_status=self.on_status)
+            activity.emit("tool", "Передаёт задачу Claude Code", args.get("task", "")[:300])
+            return self._claude.ask(args.get("task", ""))
         t = self.tools.get(name)
         if not t:
             return f"Нет инструмента {name}"
@@ -70,16 +98,22 @@ class OpenAIBrain:
         return answer
 
     def _loop(self) -> str:
+        self.cancelled = False
         for _ in range(25):
             msg = self._call().choices[0].message
             self.messages.append(msg.model_dump(exclude_none=True))
             if not msg.tool_calls:
                 return (msg.content or "").strip() or "Готово."
             for call in msg.tool_calls:
-                try:
-                    args = json.loads(call.function.arguments or "{}")
-                    out = self._run_tool(call.function.name, args)
-                except json.JSONDecodeError:
-                    out = "Ошибка: неверные аргументы"
+                if self.cancelled:  # на каждый вызов нужен ответ, иначе история сломается
+                    out = "Отменено: пользователь перебил новой командой."
+                else:
+                    try:
+                        args = json.loads(call.function.arguments or "{}")
+                        out = self._run_tool(call.function.name, args)
+                    except json.JSONDecodeError:
+                        out = "Ошибка: неверные аргументы"
                 self.messages.append({"role": "tool", "tool_call_id": call.id, "content": out[:10000]})
+            if self.cancelled:
+                return "Прервано."
         return "Задача оказалась слишком длинной, я остановился."

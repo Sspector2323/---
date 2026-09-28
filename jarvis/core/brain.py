@@ -57,6 +57,12 @@ class Brain:
             {"type": "web_search_20260209", "name": "web_search", "max_uses": 5},
         ]
 
+    cancelled = False
+
+    def cancel(self):
+        """Вас перебили новой командой — сворачиваем текущую задачу на ближайшем шаге."""
+        self.cancelled = True
+
     def reset(self):
         self.messages = []
 
@@ -110,6 +116,7 @@ class Brain:
         return answer
 
     def _loop(self) -> str:
+        self.cancelled = False
         for _ in range(25):
             resp = self._call()
             self.messages.append({"role": "assistant", "content": resp.content})
@@ -123,8 +130,11 @@ class Brain:
                 return " ".join(b.text for b in resp.content if b.type == "text").strip() or "Готово."
             results = []
             for c in calls:
-                out, is_err = self._run_tool(c.name, c.input or {})
+                out, is_err = (("Отменено: пользователь перебил новой командой.", False) if self.cancelled
+                               else self._run_tool(c.name, c.input or {}))
                 results.append({"type": "tool_result", "tool_use_id": c.id, "content": out[:10000],
                                 "is_error": is_err})
             self.messages.append({"role": "user", "content": results})
+            if self.cancelled:
+                return "Прервано."
         return "Задача оказалась слишком длинной, я остановился."

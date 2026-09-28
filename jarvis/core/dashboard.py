@@ -44,7 +44,8 @@ def _page(name: str):
 ENV_PATH = config.ROOT / ".env"
 # (ключ, подпись, тип, варианты/подсказка, группа)
 SETTINGS = [
-    ("AI_PROVIDER", "Чей мозг", "select", ["claude_code", "openai", "claude"], "brain"),
+    ("AI_PROVIDER", "Чей мозг (hybrid — самый быстрый: разговор на OpenAI, большие задачи — Claude Code)", "select", ["hybrid", "claude_code", "openai", "claude"], "brain"),
+    ("HYBRID_MODEL", "Быстрая модель для hybrid", "select", ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"], "brain"),
     ("OPENAI_API_KEY", "Ключ OpenAI", "secret", "sk-…", "brain"),
     ("OPENAI_MODEL", "Модель OpenAI (mini — быстрее)", "select", ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini", "gpt-4o"], "brain"),
     ("CLAUDE_CODE_MODEL", "Модель Claude Code (пусто = по подписке; sonnet/haiku — быстрее)", "text", "sonnet", "brain"),
@@ -69,6 +70,9 @@ SETTINGS = [
     ("TTS_VOICE", "Голос Microsoft", "select", ["ru-RU-DmitryNeural", "ru-RU-SvetlanaNeural"], "voice"),
     ("OPENAI_VOICE", "Голос OpenAI (onyx — самый низкий и бархатный)", "select", ["onyx", "ash", "ballad", "echo", "sage", "fable"], "voice"),
     ("OFFLINE_VOICE", "Запасной голос Windows, если остальные не отвечают", "select", ["true", "false"], "voice"),
+    ("VOICE_PRESET", "Стиль голоса", "select", ["дворецкий", "хриплый бас"], "voice"),
+    ("BARGE_IN", "Можно перебивать: заговорили — Джарвис замолкает и слушает", "select", ["true", "false"], "voice"),
+    ("BARGE_SENSITIVITY", "Чувствительность перебивания (меньше — чутче; в колонках без наушников — 3)", "select", ["2", "2.5", "3", "4"], "voice"),
     ("VOICE_SPEED", "Темп речи (1.0 — обычный, 1.12 — чуть быстрее)", "select", ["1.0", "1.05", "1.12", "1.2", "1.3"], "voice"),
     ("VOICE_PITCH", "Высота голоса Microsoft (меньше — глубже)", "select", ["-6Hz", "-12Hz", "-18Hz", "+0Hz"], "voice"),
     ("PAUSE_SECONDS", "Пауза, после которой фраза считается законченной (сек)", "select", ["0.8", "1.0", "1.3", "1.6", "2.0"], "voice"),
@@ -181,6 +185,9 @@ def _apply_live(updates: dict):
             setattr(config, k, [w.strip().lower() for w in v.split(",") if w.strip()])
         elif isinstance(cur, str) or cur is None:
             setattr(config, k, v)
+    if "VOICE_PRESET" in updates:  # стиль голоса — сразу, вместе с тембром
+        voice, pitch, style = config.VOICE_PRESETS.get(config.VOICE_PRESET, config.VOICE_PRESETS["дворецкий"])
+        config.OPENAI_VOICE, config.VOICE_PITCH, config.VOICE_STYLE = voice, pitch, style
     if "USER_NAME" in updates and not config.USER_NAME:
         config.USER_NAME = "Сабина"
 

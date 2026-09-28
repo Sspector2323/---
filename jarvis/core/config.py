@@ -43,6 +43,8 @@ def _bool(name: str, default: bool) -> bool:
 # Чей мозг: openai (GPT), claude (Claude API) или claude_code (Claude Code на этом ПК, по подписке)
 AI_PROVIDER = os.getenv("AI_PROVIDER", "openai").strip().lower()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1")
+# hybrid: разговор ведёт быстрая модель OpenAI, большие задачи — Claude Code (самый отзывчивый режим)
+HYBRID_MODEL = os.getenv("HYBRID_MODEL", "gpt-4.1-mini")
 MODEL = os.getenv("JARVIS_MODEL", "claude-opus-5")
 # Для claude_code: пусто = модель по умолчанию из подписки; sonnet/haiku — быстрее
 CLAUDE_CODE_MODEL = os.getenv("CLAUDE_CODE_MODEL", "").strip()
@@ -56,10 +58,27 @@ TTS_ENGINE = os.getenv("TTS_ENGINE", "openai" if os.getenv("OPENAI_API_KEY") els
 OPENAI_VOICE = os.getenv("OPENAI_VOICE", "onyx").strip()  # onyx — самый низкий и бархатный
 VOICE_SPEED = float(os.getenv("VOICE_SPEED", "1.12") or 1.12)   # 1.0 — обычный темп, 1.12 — чуть быстрее
 VOICE_PITCH = os.getenv("VOICE_PITCH", "-12Hz").strip()         # для голоса Microsoft: ниже = глубже
-VOICE_STYLE = os.getenv("VOICE_STYLE", (
-    "Голос: низкий, глубокий, бархатный мужской баритон — тёплый, обволакивающий, уверенный. "
-    "Темп: чуть быстрее обычного, собранно, без затянутых пауз. "
-    "Манера: безупречный британский дворецкий — спокойно, учтиво, с едва заметной иронией. Говори по-русски.")).strip()
+# Стиль голоса: «дворецкий» (по умолчанию), «хриплый бас» или свой текст в VOICE_STYLE
+VOICE_PRESETS = {
+    "дворецкий": ("onyx", "-12Hz",
+                  "Голос: низкий, глубокий, бархатный мужской баритон — тёплый, обволакивающий, уверенный. "
+                  "Темп: чуть быстрее обычного, собранно, без затянутых пауз. "
+                  "Манера: безупречный британский дворецкий — спокойно, учтиво, с едва заметной иронией. Говори по-русски."),
+    "хриплый бас": ("onyx", "-18Hz",
+                    "Голос: низкий мужской бас-баритон с хрипотцой и лёгкой песочной шероховатостью, как после долгой "
+                    "дороги. Интонация: расслабленная, уверенная, чуть дерзкая, с усмешкой — по-свойски, но с уважением. "
+                    "Темп: живой, чуть быстрее обычного, без пафоса. Говори по-русски."),
+}
+VOICE_PRESET = os.getenv("VOICE_PRESET", "дворецкий").strip().lower()
+_preset = VOICE_PRESETS.get(VOICE_PRESET, VOICE_PRESETS["дворецкий"])
+if not os.getenv("OPENAI_VOICE"):
+    OPENAI_VOICE = _preset[0]
+if not os.getenv("VOICE_PITCH"):
+    VOICE_PITCH = _preset[1]
+VOICE_STYLE = os.getenv("VOICE_STYLE", "").strip() or _preset[2]
+# Перебивание: заговорили, пока Джарвис говорит, — он замолкает и слушает. Чувствительность: меньше — чутче
+BARGE_IN = _bool("BARGE_IN", True)
+BARGE_SENSITIVITY = float(os.getenv("BARGE_SENSITIVITY", "2.5") or 2.5)
 # Сколько секунд тишины считать концом фразы (больше — можно делать паузы, не боясь, что Джарвис перебьёт)
 PAUSE_SECONDS = float(os.getenv("PAUSE_SECONDS", "1.0") or 1.0)
 # Запасной голос Windows, если основной недоступен (на многих ПК он только женский — Irina)

@@ -145,6 +145,16 @@ class ClaudeCodeBrain:
     def reset(self):
         self.session_id = None
 
+    def cancel(self):
+        """Вас перебили — останавливаем Claude Code прямо сейчас."""
+        self._was_cancelled = True
+        proc = getattr(self, "_proc", None)
+        if proc and proc.poll() is None:
+            proc.kill()
+        backup = getattr(self, "_backup", None)
+        if backup:
+            backup.cancel()
+
     def _fallback(self, text: str, problem: str) -> str:
         """Claude Code недоступен — отвечаем мозгом OpenAI (если есть ключ) и один раз говорим, что чинить."""
         if not os.getenv("OPENAI_API_KEY"):
@@ -163,6 +173,7 @@ class ClaudeCodeBrain:
         with RUN_LOCK:
             proc = subprocess.Popen(cmd, cwd=self.cwd, env=_clean_env(), stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
+            self._proc = proc
             killer = threading.Timer(900, proc.kill)
             killer.start()
             err_lines: list[str] = []
@@ -236,11 +247,14 @@ class ClaudeCodeBrain:
         self.on_status("⚙ передаю Claude Code…")
         cmd[cmd.index("json")] = "stream-json"  # поток событий: каждый шаг сразу в «Прямой эфир»
         cmd.append("--verbose")
+        self._was_cancelled = False
         try:
             data, stderr = self._stream(cmd)
         except subprocess.TimeoutExpired:
             data, stderr = None, ""
             answer = "Задача заняла больше пятнадцати минут, я её остановил."
+        if self._was_cancelled:
+            return "Прервано."
         if data is None and not stderr:
             pass
         elif not data:
