@@ -13,7 +13,8 @@ KNOWN_KEYS = {
     "TTS_ENGINE", "OPENAI_VOICE", "OFFLINE_VOICE", "USER_NAME", "GREETING", "INTRO_ANIMATION", "DASHBOARD_SCREENS",
     "MORNING_BRIEF", "CITY", "EMAIL_ADDRESS", "EMAIL_PASSWORD", "IMAP_HOST", "SMTP_HOST", "CONFIRM_DANGEROUS",
     "DASHBOARD_PORT", "NOTION_TOKEN", "NOTION_TASKS_DB", "NOTION_HUB_PAGE", "GITHUB_TOKEN", "PROJECTS_DIR",
-    "EDITOR", "WORKSPACE_URLS",
+    "EDITOR", "WORKSPACE_URLS", "TELEGRAM_BOT_TOKEN", "TELEGRAM_OWNER_ID", "TELEGRAM_BRIEF", "VOICE_SPEED",
+    "VOICE_PITCH", "VOICE_STYLE", "PAUSE_SECONDS",
 }
 PREFIX = {"OPENAI_API_KEY": "sk-", "ANTHROPIC_API_KEY": "sk-ant-", "NOTION_TOKEN": ("ntn_", "secret_"),
           "GITHUB_TOKEN": ("github_pat_", "ghp_")}
@@ -95,13 +96,15 @@ def main():
 
     print("\n— Проверка сервисов (займёт до минуты) —")
     from .dashboard import run_test
-    tests = [("claude", "Claude Code"), ("openai", "OpenAI"), ("notion", "Notion"), ("github", "GitHub"), ("email", "Почта")]
+    tests = [("claude", "Claude Code"), ("openai", "OpenAI"), ("notion", "Notion"), ("github", "GitHub"),
+             ("email", "Почта"), ("telegram", "Телеграм")]
     for svc, name in tests:
         if svc == "openai" and not __import__("os").getenv("OPENAI_API_KEY"):
             print(f"  ○ {name}: ключ не задан")
             continue
         if svc == "notion" and not config.NOTION_TOKEN or svc == "github" and not config.GITHUB_TOKEN \
-                or svc == "email" and not (config.EMAIL_ADDRESS and config.EMAIL_PASSWORD):
+                or svc == "email" and not (config.EMAIL_ADDRESS and config.EMAIL_PASSWORD) \
+                or svc == "telegram" and not config.TELEGRAM_BOT_TOKEN:
             print(f"  ○ {name}: не настроено")
             continue
         print(f"  … {name}", end="\r", flush=True)

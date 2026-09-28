@@ -75,6 +75,14 @@ const GROUPS = [
      "Generate token → скопируйте (начинается с <code>github_pat_</code>) → вставьте ниже → «Сохранить» → «Проверить GitHub».",
      "Потом скажите «Джарвис, скачай все репозитории» — и заработает «открой таймкодер в Курсоре»."],
    links: [["https://github.com/settings/personal-access-tokens/new", "Создать токен ↗"]]},
+  {id: "telegram", ic: "✈️", title: "Телеграм", test: [["telegram", "Проверить Телеграм"]],
+   steps: [
+     "Откройте в Телеграме <b>@BotFather</b> (кнопка ниже) → <code>/newbot</code> → придумайте имя (например, «Джарвис») и адрес, оканчивающийся на <code>bot</code>.",
+     "BotFather пришлёт <b>токен</b> вида <code>123456789:AA…</code> — вставьте его ниже → «Сохранить».",
+     "<b>Перезапустите Джарвиса.</b> В его окне появится строка «отправьте /start 123456» — это код привязки (он же виден в «Подключениях» на дашборде).",
+     "Откройте своего бота и отправьте ему <code>/start</code> с этим кодом. Всё — бот узнаёт вас и отвечает только вам.",
+     "Пишите или наговаривайте голосовые. Подтверждения придут кнопками, напоминания и сводка дня — сюда же."],
+   links: [["https://t.me/BotFather", "Открыть @BotFather ↗"]]},
   {id: "email", ic: "📬", title: "Почта", test: [["email", "Проверить почту"]],
    steps: [
      "Обычный пароль не подойдёт — нужен <b>пароль приложения</b> (кнопки ниже).",
@@ -91,7 +99,7 @@ const GROUPS = [
 
 async function badges() {
   let links; try { links = await api("/api/integrations"); } catch { return; }
-  const by = {brain: "Claude Code", notion: "Notion", github: "GitHub", email: "Почта"};
+  const by = {brain: "Claude Code", notion: "Notion", github: "GitHub", email: "Почта", telegram: "Телеграм"};
   for (const [g, name] of Object.entries(by)) {
     const s = links.find(l => l.name === name), el = document.querySelector(`#g-${g} .state`);
     if (s && el) { el.className = "state " + (s.ok ? "ok" : "bad"); el.textContent = s.ok ? "● подключено" : "○ " + s.note; }
@@ -107,7 +115,7 @@ async function load() {
     document.querySelector("form").onsubmit = save;
     return;
   }
-  const badge = g => ["brain", "notion", "github", "email"].includes(g.id) ? `<span class="state">…</span>` : "";
+  const badge = g => ["brain", "notion", "github", "email", "telegram"].includes(g.id) ? `<span class="state">…</span>` : "";
   document.getElementById("main").innerHTML = GROUPS.map(g => `
     <section id="g-${g.id}"><h2><span class="ic">${g.ic}</span>${g.title}${badge(g)}</h2>
       ${g.steps.length ? `<ol class="steps">${g.steps.map(s => `<li>${s}</li>`).join("")}</ol>` : ""}

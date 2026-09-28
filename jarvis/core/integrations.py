@@ -75,6 +75,18 @@ def connect_codex() -> str:
     return f"✅ Codex: Джарвис прописан в {CODEX_CFG} (его читают и приложение Codex, и консольная версия)"
 
 
+def telegram_item():
+    from .telegram_bot import STATE, PAIR_CODE, owner
+    if not config.TELEGRAM_BOT_TOKEN:
+        return ("Телеграм", False, "нажмите, чтобы подключить", "/settings#g-telegram")
+    if STATE["ok"] is False:
+        return ("Телеграм", False, STATE["note"], "/settings#g-telegram")
+    if not owner():
+        return ("Телеграм", False, f"отправьте боту /start {PAIR_CODE}", "/settings#g-telegram")
+    return ("Телеграм", True, STATE["note"] if STATE["username"] else "привязан",
+            f"https://t.me/{STATE['username']}" if STATE["username"] else "/settings#g-telegram")
+
+
 def claude_item():
     from .brain_claude_code import STATUS
     installed = bool(find("claude"))
@@ -110,6 +122,7 @@ def status() -> list[dict]:
          "https://code.visualstudio.com"),
         ("Notion", notion.enabled(), "подключён" if notion.enabled() else "нажмите, чтобы подключить", "/settings#g-notion"),
         ("GitHub", github.enabled(), "подключён" if github.enabled() else "нажмите, чтобы подключить", "/settings#g-github"),
+        telegram_item(),
         ("Почта", bool(config.EMAIL_ADDRESS and config.EMAIL_PASSWORD),
          config.EMAIL_ADDRESS or "нажмите, чтобы подключить", "/settings#g-email"),
     ]

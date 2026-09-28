@@ -91,5 +91,10 @@ EDITOR = os.getenv("EDITOR", "cursor").strip().lower()  # редактор по 
 WORKSPACE_URLS = os.getenv("WORKSPACE_URLS", "https://railway.com/dashboard,https://github.com,"
                            "https://www.notion.so,https://claude.ai/code")
 
+# Телеграм-бот Джарвиса: токен от @BotFather; ID хозяйки запоминается сам при /start с кодом
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_OWNER_ID = os.getenv("TELEGRAM_OWNER_ID", "").strip()
+TELEGRAM_BRIEF = _bool("TELEGRAM_BRIEF", True)  # присылать сводку дня в Телеграм при запуске
+
 CONFIRM_DANGEROUS = _bool("CONFIRM_DANGEROUS", True)
 DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "5050"))

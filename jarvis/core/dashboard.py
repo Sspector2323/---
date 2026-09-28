@@ -56,6 +56,9 @@ SETTINGS = [
     ("GITHUB_TOKEN", "Токен GitHub", "secret", "github_pat_…", "github"),
     ("PROJECTS_DIR", "Папка с проектами на компьютере", "text", "C:\\Users\\вы\\Projects", "github"),
     ("EDITOR", "Редактор по умолчанию", "select", ["cursor", "vscode"], "github"),
+    ("TELEGRAM_BOT_TOKEN", "Токен бота от @BotFather", "secret", "123456789:AA…", "telegram"),
+    ("TELEGRAM_OWNER_ID", "Ваш Telegram ID (заполнится сам после /start с кодом)", "text", "", "telegram"),
+    ("TELEGRAM_BRIEF", "Присылать сводку дня в Телеграм при запуске", "select", ["true", "false"], "telegram"),
     ("EMAIL_ADDRESS", "Адрес почты", "text", "you@gmail.com", "email"),
     ("EMAIL_PASSWORD", "Пароль приложения", "secret", "xxxx xxxx xxxx xxxx", "email"),
     ("TTS_ENGINE", "Какой голос первым: edge (бесплатный) или openai (стабильный)", "select", ["edge", "openai"], "voice"),
@@ -75,7 +78,7 @@ SETTINGS = [
     ("WORKSPACE_URLS", "Рабочая зона: сайты через запятую", "text", "https://railway.com/dashboard,…", "look"),
     ("CONFIRM_DANGEROUS", "Спрашивать «да/нет» перед опасными действиями", "select", ["true", "false"], "look"),
 ]
-NEEDS_RESTART = {"AI_PROVIDER", "INTRO_ANIMATION", "DASHBOARD_SCREENS", "PAUSE_SECONDS", "WAKE_WORDS"}
+NEEDS_RESTART = {"TELEGRAM_BOT_TOKEN", "AI_PROVIDER", "INTRO_ANIMATION", "DASHBOARD_SCREENS", "PAUSE_SECONDS", "WAKE_WORDS"}
 SECRET_KEYS = {k for k, _, kind, *_ in SETTINGS if kind == "secret"}
 
 
@@ -211,6 +214,10 @@ def run_test(svc: str) -> tuple[bool, str]:
             if not st["ok"]:
                 return False, f"Claude Code: {st['note']}"
             msg = "Claude Code на связи: вход выполнен."
+        elif svc == "telegram":
+            from .telegram_bot import test
+            ok, msg = test()
+            return ok, "Телеграм: " + msg
         elif svc == "voice":
             BRAIN_SAY = BRAIN.get("say")
             if BRAIN_SAY:

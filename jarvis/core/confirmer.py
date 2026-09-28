@@ -12,20 +12,35 @@ class Confirmer:
         self.voice = voice_enabled
         self.pending: dict[str, dict] = {}
         self.lock = threading.Lock()
+        self.notifiers: list = []   # куда ещё отправить вопрос (Телеграм)
+        self.resolvers: list = []   # кому сообщить, что вопрос решён
 
     def ask(self, question: str, timeout: float = 120) -> bool:
         cid = uuid.uuid4().hex[:8]
         item = {"q": question[:400], "event": threading.Event(), "answer": None}
         with self.lock:
             self.pending[cid] = item
+        for notify in self.notifiers:
+            try:
+                notify(cid, item["q"])
+            except Exception:  # noqa: BLE001
+                pass
         if self.voice:
             threading.Thread(target=self._by_voice, args=(cid, item), daemon=True).start()
         else:
-            print(f"❓ Подтвердите на дашборде: {question[:200]}")
-        item["event"].wait(timeout)
+            print(f"❓ Подтвердите на дашборде или в Телеграме: {question[:200]}")
+        if not item["event"].wait(timeout):
+            self._resolved(cid, False)
         with self.lock:
             self.pending.pop(cid, None)
         return item["answer"] is True
+
+    def _resolved(self, cid: str, yes: bool):
+        for r in self.resolvers:
+            try:
+                r(cid, yes)
+            except Exception:  # noqa: BLE001
+                pass
 
     def _by_voice(self, cid: str, item: dict):
         self.io.confirming = True
@@ -55,6 +70,7 @@ class Confirmer:
             return False
         item["answer"] = yes
         item["event"].set()
+        self._resolved(cid, yes)
         if self.voice:
             self.io.say("Принято." if yes else "Отменяю.", cache=True, quiet=True)
         return True

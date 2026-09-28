@@ -61,7 +61,13 @@ def ask_with_fillers(io, ask, command: str) -> str:
 def reminder_loop(io):
     while True:
         for r in due_reminders():
-            io.say(f"{config.USER_NAME}, напоминаю: {r['text']}")
+            text = f"{config.USER_NAME}, напоминаю: {r['text']}"
+            try:  # напоминание дублируется в Телеграм — вдруг вы не у компьютера
+                from core.telegram_bot import send
+                send("⏰ " + text)
+            except Exception:  # noqa: BLE001
+                pass
+            io.say(text)
         time.sleep(15)
 
 
@@ -124,6 +130,8 @@ def main():
             return brain.ask(text)
 
     dashboard.BRAIN.update(ask=ask, confirm=confirmer.ask, say=io.say, confirmer=confirmer)
+    from core.telegram_bot import Bot
+    Bot(ask, confirmer).start()  # личный Телеграм-бот (если задан TELEGRAM_BOT_TOKEN)
     threading.Thread(target=reminder_loop, args=(io,), daemon=True).start()
     print(f"📊 Дашборд: {url}")
 
@@ -137,6 +145,12 @@ def main():
             time.sleep(0.1)
         if brief_box.get("text"):
             io.say(brief_box["text"])
+            if config.TELEGRAM_BRIEF:
+                try:
+                    from core.telegram_bot import send
+                    send(f"☀️ {config.GREETING.format(user=config.USER_NAME)}\n\n{brief_box['text']}")
+                except Exception:  # noqa: BLE001
+                    pass
     # фразы-перебивки озвучиваем заранее, в фоне — потом они звучат без задержки
     threading.Thread(target=io.prewarm, args=([p.format(user=config.USER_NAME) for p in fillers.ALL],),
                      daemon=True).start()
