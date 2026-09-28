@@ -55,19 +55,36 @@ def notion_tasks(include_done: bool = False):
                      for r in rows) or "В Notion задач нет"
 
 
-@tool("notion_add_task", "Добавить задачу/проект в Notion-базу «Сводка задач».",
-      {"title": S("Название"), "status": S("Статус", enum=STATUSES),
-       "priority": S("Приоритет", enum=["High", "Medium", "Low"]), "details": S("Описание (необязательно)")},
-      ["title"])
-def notion_add_task(title: str, status: str = "Не начато", priority: str = "Medium", details: str = ""):
+def add_task_raw(title: str, status: str = "Не начато", priority: str = "Medium", details: str = "",
+                 due: str | None = None) -> dict:
     priority = PRIORITIES.get(priority.lower(), priority)
-    body = {"parent": {"database_id": config.NOTION_TASKS_DB}, "properties": {
-        "Project name": {"title": [{"text": {"content": title}}]},
-        "Status": {"select": {"name": status}}, "Priority": {"select": {"name": priority}}}}
+    props = {"Project name": {"title": [{"text": {"content": title}}]},
+             "Status": {"select": {"name": status}}, "Priority": {"select": {"name": priority}}}
+    if due:  # «ГГГГ-ММ-ДД ЧЧ:ММ» или «ГГГГ-ММ-ДД» → колонка End date
+        props["End date"] = {"date": {"start": due.strip().replace(" ", "T") + (":00" if len(due.strip()) == 16 else "")}}
+    body = {"parent": {"database_id": config.NOTION_TASKS_DB}, "properties": props}
     if details:
         body["children"] = [{"object": "block", "type": "paragraph",
-                             "paragraph": {"rich_text": [{"text": {"content": details[:1900]}}]}}]
-    return f"Добавил в Notion: {_req('POST', '/pages', json=body)['url']}"
+                             "paragraph": {"rich_text": [{"text": {"content": part[:1900]}}]}}
+                            for part in details.split("\n\n") if part.strip()][:20]
+    try:
+        page = _req("POST", "/pages", json=body)
+    except requests.HTTPError:
+        if not due:
+            raise
+        props.pop("End date")  # вдруг в базе нет колонки срока — пишем без неё
+        page = _req("POST", "/pages", json=body)
+    return {"id": page["id"], "url": page["url"]}
+
+
+@tool("notion_add_task", "Добавить задачу/проект в Notion-базу «Сводка задач».",
+      {"title": S("Название"), "status": S("Статус", enum=STATUSES),
+       "priority": S("Приоритет", enum=["High", "Medium", "Low"]), "details": S("Описание (необязательно)"),
+       "due": S("Срок ГГГГ-ММ-ДД ЧЧ:ММ (необязательно)")},
+      ["title"])
+def notion_add_task(title: str, status: str = "Не начато", priority: str = "Medium", details: str = "",
+                    due: str | None = None):
+    return f"Добавил в Notion: {add_task_raw(title, status, priority, details, due)['url']}"
 
 
 @tool("notion_set_status", "Поменять статус задачи в Notion (Не начато / В работе / Готово).",

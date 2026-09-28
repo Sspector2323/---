@@ -83,6 +83,14 @@ const GROUPS = [
      "Откройте своего бота и отправьте ему <code>/start</code> с этим кодом. Всё — бот узнаёт вас и отвечает только вам.",
      "Пишите или наговаривайте голосовые. Подтверждения придут кнопками, напоминания и сводка дня — сюда же."],
    links: [["https://t.me/BotFather", "Открыть @BotFather ↗"]]},
+  {id: "chats", ic: "💼", title: "Рабочие чаты Телеграма → задачи в Notion", test: [["chats", "Проверить вход"]],
+   steps: [
+     "Откройте <b>my.telegram.org</b> (кнопка ниже) → войдите по номеру → <b>API development tools</b> → создайте приложение (название любое, например «Jarvis», платформа Desktop).",
+     "Скопируйте <b>api_id</b> и <b>api_hash</b> в поля ниже → «Сохранить».",
+     "В папке Джарвиса дважды кликните <code>telegram_login.bat</code> → номер телефона → код из Телеграма (и пароль, если включена двухэтапная защита) → выберите номера рабочих чатов.",
+     "Выбор чатов можно поменять ниже галочками. Джарвис читает только отмеченные чаты, ничего не отправляет и не отмечает прочитанным.",
+     "Раз в N минут новые сообщения разбирает ИИ: задачи для вас → «Сводка задач» в Notion + напоминания по срокам + утренняя сводка."],
+   links: [["https://my.telegram.org/apps", "my.telegram.org ↗"]]},
   {id: "email", ic: "📬", title: "Почта", test: [["email", "Проверить почту"]],
    steps: [
      "Обычный пароль не подойдёт — нужен <b>пароль приложения</b> (кнопки ниже).",
@@ -129,6 +137,7 @@ async function load() {
     </section>`).join("") + ACCESS;
   document.querySelectorAll("form").forEach(f => f.onsubmit = save);
   badges();
+  chatPicker();
   if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
 }
 function field(it) {
@@ -159,6 +168,28 @@ async function test(svc, btn) {
   catch { msg.className = "msg bad"; msg.innerHTML = "✗ Джарвис запущен в старой версии — перезапустите start_jarvis.bat"; return; }
   msg.className = "msg " + (r.ok ? "ok" : "bad"); msg.textContent = (r.ok ? "✓ " : "✗ ") + r.message;
   badges();
+}
+async function chatPicker() {
+  const sec = document.getElementById("g-chats"); if (!sec) return;
+  let box = sec.querySelector(".picker");
+  if (!box) { box = document.createElement("div"); box.className = "picker"; sec.appendChild(box); }
+  box.innerHTML = `<p class="lead">Загружаю список чатов…</p>`;
+  let r; try { r = await api("/api/tgchats"); } catch { box.innerHTML = ""; return; }
+  if (!r.ok) { box.innerHTML = `<p class="lead">${esc(r.message)}</p>`; return; }
+  box.innerHTML = `<h2 style="font-size:15px;margin-top:14px">Какие чаты читать</h2>
+    <input id="chatFilter" placeholder="Поиск по названию" style="margin:8px 0">
+    <div id="chatList" style="max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px">
+    ${r.chats.map(c => `<label class="chatrow" style="display:flex;gap:10px;padding:5px 0;align-items:center;cursor:pointer">
+      <input type="checkbox" style="width:auto" data-id="${c.id}" data-name="${esc(c.name)}" ${c.on ? "checked" : ""}>
+      <span style="flex:1">${esc(c.name)}</span><span class="lead" style="font-size:12px">${esc(c.kind)}</span></label>`).join("")}</div>
+    <div class="actions"><button class="btn primary" id="saveChats">Сохранить выбор</button><span class="msg" id="chatMsg"></span></div>`;
+  document.getElementById("chatFilter").oninput = e => { const q = e.target.value.toLowerCase();
+    box.querySelectorAll(".chatrow").forEach(r => r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none"); };
+  document.getElementById("saveChats").onclick = async () => {
+    const chats = [...box.querySelectorAll("input[type=checkbox]:checked")].map(i => ({id: i.dataset.id, name: i.dataset.name}));
+    const res = await api("/api/tgchats", {method: "POST", body: JSON.stringify({chats})});
+    const m = document.getElementById("chatMsg"); m.className = "msg ok"; m.textContent = res.message;
+  };
 }
 const ACCESS = `<section><h2><span class="ic">🛡</span>Доступы Windows</h2><ol class="steps">
   <li><b>Микрофон:</b> Пуск → Параметры → Конфиденциальность и защита → Микрофон → включите доступ для классических приложений.</li>

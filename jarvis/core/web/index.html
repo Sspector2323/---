@@ -282,6 +282,9 @@
     <section data-v="work" class="card w8"><h2>Проекты · GitHub <span class="count" id="rcount">0</span>
       <span class="right"><button class="btn sm" onclick="syncRepos()">⬇ Скачать / обновить все</button></span></h2>
       <div class="repos" id="repos"><div class="empty">Загружаю…</div></div></section>
+    <section data-v="work" class="card w6"><h2>Задачи из рабочих чатов <span class="count" id="ctcount">0</span>
+      <span class="right"><button class="btn sm" onclick="scanChats()">↻ Собрать сейчас</button></span></h2>
+      <ul class="list" id="chattasks"><li class="empty">Подключается в ⚙ Настройках → «Рабочие чаты»</li></ul></section>
     <section data-v="work" class="card"><h2>Claude в облаке</h2><ul class="list" id="cloud"><li class="empty">Загружаю…</li></ul></section>
 
     <section data-v="work" class="card w6"><h2>Notion · Сводка задач <span class="count" id="ncount">0</span><a class="right" id="nlink" target="_blank"></a></h2>
@@ -579,6 +582,19 @@ $("noteForm").onsubmit = async e => { e.preventDefault(); const v = $("noteText"
 $("memForm").onsubmit = async e => { e.preventDefault(); const k = $("memKey").value.trim(), v = $("memVal").value.trim(); if (!k || !v) return;
   await tool("remember", {key: k, value: v}); $("memKey").value = $("memVal").value = ""; };
 (() => { const d = new Date(Date.now() + 3600e3); d.setMinutes(0); $("remAt").value = new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); })();
+
+// ---------- Задачи из чатов ----------
+async function loadChatTasks() {
+  let rows = []; try { rows = await api("/api/chattasks"); } catch { return; }
+  $("ctcount").textContent = rows.length;
+  if (!rows.length) return;
+  $("chattasks").innerHTML = rows.map(r => `<li class="click" onclick="${r.notion_url ? `window.open('${esc(r.notion_url)}')` : ""}">
+    <span style="font-size:18px">💼</span><span class="grow"><b>${esc(r.title)}</b>
+    <div class="muted">чат «${esc(r.chat)}»${r.due ? " · до " + esc(r.due) : ""}</div></span>
+    <span class="prio ${r.priority === "High" ? "high" : ""}">${esc(r.priority || "")}</span></li>`).join("");
+}
+async function scanChats() { toast("Просматриваю рабочие чаты…", 8000); await tool("chat_tasks_scan"); loadChatTasks(); }
+loadChatTasks(); setInterval(loadChatTasks, 60000);
 
 // ---------- Прямой эфир ----------
 const ICON = {task: "🎯", tool: "⚙️", done: "✅", error: "❌", think: "💭", confirm: "⚠️", answer: "💬", system: "🛰"};

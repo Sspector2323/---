@@ -141,6 +141,8 @@ def main():
     dashboard.BRAIN.update(ask=ask, confirm=confirmer.ask, say=io.say, confirmer=confirmer)
     from core.telegram_bot import Bot
     Bot(ask, confirmer).start()  # личный Телеграм-бот (если задан TELEGRAM_BOT_TOKEN)
+    from core import tg_reader
+    threading.Thread(target=tg_reader.background_loop, daemon=True).start()  # задачи из рабочих чатов
     threading.Thread(target=reminder_loop, args=(io,), daemon=True).start()
     print(f"📊 Дашборд: {url}")
 

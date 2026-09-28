@@ -59,6 +59,10 @@ SETTINGS = [
     ("TELEGRAM_BOT_TOKEN", "Токен бота от @BotFather", "secret", "123456789:AA…", "telegram"),
     ("TELEGRAM_OWNER_ID", "Ваш Telegram ID (заполнится сам после /start с кодом)", "text", "", "telegram"),
     ("TELEGRAM_BRIEF", "Присылать сводку дня в Телеграм при запуске", "select", ["true", "false"], "telegram"),
+    ("TG_API_ID", "api_id (с my.telegram.org)", "text", "1234567", "chats"),
+    ("TG_API_HASH", "api_hash (с my.telegram.org)", "secret", "0123456789abcdef…", "chats"),
+    ("TG_SCAN_MINUTES", "Как часто проверять чаты (минут)", "select", ["15", "30", "60", "120"], "chats"),
+    ("TG_DIGEST_TIME", "Утренняя сводка задач из чатов (время; пусто — не нужна)", "text", "10:00", "chats"),
     ("EMAIL_ADDRESS", "Адрес почты", "text", "you@gmail.com", "email"),
     ("EMAIL_PASSWORD", "Пароль приложения", "secret", "xxxx xxxx xxxx xxxx", "email"),
     ("TTS_ENGINE", "Какой голос первым: edge (бесплатный) или openai (стабильный)", "select", ["edge", "openai"], "voice"),
@@ -163,6 +167,11 @@ def _apply_live(updates: dict):
         cur = getattr(config, k, None)
         if isinstance(cur, bool):
             setattr(config, k, v.lower() in ("1", "true", "yes", "да"))
+        elif isinstance(cur, int):
+            try:
+                setattr(config, k, int(v))
+            except ValueError:
+                pass
         elif isinstance(cur, float):
             try:
                 setattr(config, k, float(v))
@@ -214,6 +223,14 @@ def run_test(svc: str) -> tuple[bool, str]:
             if not st["ok"]:
                 return False, f"Claude Code: {st['note']}"
             msg = "Claude Code на связи: вход выполнен."
+        elif svc == "chats":
+            from . import tg_reader
+            if not tg_reader.enabled():
+                return False, "впишите api_id и api_hash"
+            if not tg_reader.logged_in():
+                return False, "нет входа — запустите telegram_login.bat"
+            n = len(tg_reader.dialogs())
+            return True, f"вход есть, чатов в аккаунте: {n}; выбрано рабочих: {len(tg_reader.selected_chats())}"
         elif svc == "telegram":
             from .telegram_bot import test
             ok, msg = test()
@@ -286,7 +303,7 @@ UI_TOOLS = {
     "lock_computer", "sleep_computer", "shutdown_computer", "restart_computer", "cancel_shutdown", "system_status",
     "top_processes", "check_email", "read_email", "mark_email", "add_task", "complete_task", "delete_task",
     "add_reminder", "delete_reminder", "add_note", "forget", "remember", "notion_add_task", "notion_set_status",
-    "github_commits", "github_issues", "github_sync", "codex_task", "open_app", "play_youtube",
+    "github_commits", "github_issues", "github_sync", "codex_task", "open_app", "play_youtube", "chat_tasks_scan",
 }
 READ_ONLY_UI = {"read_email", "check_email", "github_commits", "github_issues", "system_status", "top_processes"}
 _cache: dict = {}
@@ -379,6 +396,32 @@ def confirm():
 def activity_feed():
     from . import activity
     return jsonify(activity.listing(int(request.args.get("after", 0) or 0)))
+
+
+@app.get("/api/tgchats")
+def tg_chats():
+    from . import tg_reader
+    if not (tg_reader.enabled() and tg_reader.logged_in()):
+        return jsonify(ok=False, message="Сначала api_id/api_hash и вход через telegram_login.bat", chats=[])
+    try:
+        chosen = {c["id"] for c in tg_reader.selected_chats()}
+        return jsonify(ok=True, chats=[{**d, "on": d["id"] in chosen} for d in tg_reader.dialogs()])
+    except Exception as e:  # noqa: BLE001
+        return jsonify(ok=False, message=str(e), chats=[])
+
+
+@app.post("/api/tgchats")
+def tg_chats_save():
+    from . import tg_reader
+    chats = request.get_json(force=True).get("chats", [])
+    tg_reader.save_chats([{"id": int(c["id"]), "name": str(c["name"])[:120]} for c in chats])
+    return jsonify(ok=True, message=f"Сохранено рабочих чатов: {len(chats)}")
+
+
+@app.get("/api/chattasks")
+def chat_tasks_api():
+    from . import tg_reader
+    return jsonify(tg_reader.open_tasks() if tg_reader.enabled() else [])
 
 
 @app.get("/api/pending")

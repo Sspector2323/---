@@ -96,5 +96,12 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_OWNER_ID = os.getenv("TELEGRAM_OWNER_ID", "").strip()
 TELEGRAM_BRIEF = _bool("TELEGRAM_BRIEF", True)  # присылать сводку дня в Телеграм при запуске
 
+# Задачи из рабочих чатов Телеграма (вход в ВАШ аккаунт, только чтение): https://my.telegram.org → API
+TG_API_ID = os.getenv("TG_API_ID", "").strip()
+TG_API_HASH = os.getenv("TG_API_HASH", "").strip()
+TG_SCAN_MINUTES = int(os.getenv("TG_SCAN_MINUTES", "30") or 30)
+TG_DIGEST_TIME = os.getenv("TG_DIGEST_TIME", "10:00").strip()  # утренняя сводка задач из чатов; пусто — не нужна
+TG_MODEL = os.getenv("TG_MODEL", "gpt-4.1-mini").strip()
+
 CONFIRM_DANGEROUS = _bool("CONFIRM_DANGEROUS", True)
 DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "5050"))
