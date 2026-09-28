@@ -31,6 +31,7 @@ KNOWN = {
                r"%APPDATA%\npm\claude.cmd", "~/.local/bin/claude", "/usr/local/bin/claude", "/opt/homebrew/bin/claude"],
     "codex": [r"%APPDATA%\npm\codex.cmd", r"%LOCALAPPDATA%\Microsoft\WinGet\Links\codex.exe", "~/.local/bin/codex"],
     "cursor": [r"%LOCALAPPDATA%\Programs\cursor\resources\app\bin\cursor.cmd", r"%LOCALAPPDATA%\Programs\cursor\Cursor.exe"],
+    "npm": [r"%ProgramFiles%\nodejs\npm.cmd", r"%ProgramFiles(x86)%\nodejs\npm.cmd"],
     "code": [r"%LOCALAPPDATA%\Programs\Microsoft VS Code\bin\code.cmd", r"%ProgramFiles%\Microsoft VS Code\bin\code.cmd"],
 }
 
