@@ -18,6 +18,7 @@ from .ai import AIResponder
 from .broadcast import copy_sender, run_broadcast, template_sender
 from .config import Config
 from .sender import build_keyboard, send_html, send_post
+from .repost import Reposter
 from .sheets import PlayersSheet
 from .texts import BROADCASTS, IMPORTANT_KEYBOARD, IMPORTANT_TEXT, WELCOME_CAPTION, WELCOME_PHOTO
 
@@ -31,11 +32,13 @@ ADMIN_HELP = (
     "/send — ответь этой командой на любое сообщение (текст, фото, видео), "
     "и выбери: разослать копию всей базе или опубликовать в канал\n"
     "/stats — сколько людей в базе\n"
-    "/myid — твой Telegram ID"
+    "/myid — твой Telegram ID\n\n"
+    "Посты из канала Витуса бот сам пересылает в наш канал "
+    "(если он добавлен туда администратором)."
 )
 
 
-def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder) -> Router:
+def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Reposter) -> Router:
     router = Router()
     router.message.filter(F.chat.type == "private")  # «Фильтр: только личка»
     important_kb = build_keyboard(IMPORTANT_KEYBOARD)
@@ -158,6 +161,22 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder) -> Router:
                 state["busy"] = False
 
         state["task"] = asyncio.create_task(worker())
+
+    # ---------- автопересылка из канала Витуса ----------
+
+    @router.channel_post()
+    async def on_channel_post(message: Message, bot: Bot):
+        await reposter.on_channel_post(message, bot)
+
+    @router.callback_query(F.data.startswith("rp:"), F.from_user.id.func(is_admin))
+    async def repost_decision(call: CallbackQuery, bot: Bot):
+        _, job_id, action = call.data.split(":", 2)
+        await call.answer()
+        try:
+            result = await reposter.resolve(int(job_id), action, bot)
+        except Exception as e:
+            result = f"Ошибка публикации: {e}"
+        await call.message.edit_text(result)
 
     # ---------- основной сценарий ----------
 

@@ -9,6 +9,7 @@ from aiogram.types import BotCommand, BotCommandScopeChat, BotCommandScopeDefaul
 from .ai import AIResponder
 from .config import load_config
 from .handlers import setup_router
+from .repost import Reposter
 from .sheets import PlayersSheet
 
 ADMIN_COMMANDS = [
@@ -34,7 +35,8 @@ async def main() -> None:
 
     bot = Bot(cfg.telegram_token, default=DefaultBotProperties(link_preview_is_disabled=False))
     dp = Dispatcher()
-    dp.include_router(setup_router(cfg, sheet, ai))
+    reposter = Reposter(cfg.source_channel, cfg.promo_channel_id, cfg.repost_mode, cfg.admin_ids)
+    dp.include_router(setup_router(cfg, sheet, ai, reposter))
 
     # Снимаем вебхук n8n, иначе long polling не получит обновления
     await bot.delete_webhook(drop_pending_updates=False)
@@ -47,7 +49,8 @@ async def main() -> None:
             log.warning("Не удалось поставить меню админу %s (он ещё не писал боту?): %s", admin_id, e)
     me = await bot.get_me()
     log.info("Бот @%s запущен, админы: %s", me.username, sorted(cfg.admin_ids) or "не заданы")
-    await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
+    log.info("Автопересылка: @%s → %s, режим %s", cfg.source_channel, cfg.promo_channel_id, reposter.mode)
+    await dp.start_polling(bot, allowed_updates=["message", "callback_query", "channel_post"])
 
 
 if __name__ == "__main__":
