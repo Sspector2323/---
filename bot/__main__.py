@@ -18,6 +18,7 @@ ADMIN_COMMANDS = [
     BotCommand(command="stats", description="Сколько людей в базе"),
     BotCommand(command="admin", description="Подсказка по командам"),
     BotCommand(command="myid", description="Мой Telegram ID"),
+    BotCommand(command="usermode", description="Режим обычного пользователя вкл/выкл"),
 ]
 
 
