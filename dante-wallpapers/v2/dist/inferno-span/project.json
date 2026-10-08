@@ -1,0 +1,52 @@
+{
+  "title": "Inferno — Все 3 монитора одним холстом (Span)",
+  "type": "web",
+  "file": "index.html",
+  "general": {
+    "properties": {
+      "screen": {
+        "order": 1,
+        "text": "Какие круги",
+        "type": "combo",
+        "value": "all",
+        "options": [
+          {
+            "label": "Монитор 1: I–III",
+            "value": "1"
+          },
+          {
+            "label": "Монитор 2: IV–VI",
+            "value": "2"
+          },
+          {
+            "label": "Монитор 3: VII–IX",
+            "value": "3"
+          },
+          {
+            "label": "Все 9 (span)",
+            "value": "all"
+          },
+          {
+            "label": "Авто",
+            "value": "auto"
+          }
+        ]
+      },
+      "cycle": {
+        "order": 2,
+        "text": "Длина спуска, минут",
+        "type": "slider",
+        "value": 9,
+        "min": 5,
+        "max": 15,
+        "step": 1
+      },
+      "quotes": {
+        "order": 3,
+        "text": "Цитаты",
+        "type": "bool",
+        "value": true
+      }
+    }
+  }
+}

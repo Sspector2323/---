@@ -4,3 +4,4 @@ __pycache__/
 .venv/
 venv/
 service_account*.json
+v2/plates/__pycache__/
