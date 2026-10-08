@@ -1,0 +1,35 @@
+{
+  "screen": {
+    "type": "dropdown",
+    "value": 0,
+    "text": "Какие круги показывать",
+    "items": [
+      "Монитор 1: I–III",
+      "Монитор 2: IV–VI",
+      "Монитор 3: VII–IX",
+      "Все 9 (span)",
+      "Авто: где поэты"
+    ]
+  },
+  "cycle": {
+    "type": "slider",
+    "value": 9,
+    "min": 5,
+    "max": 15,
+    "step": 1,
+    "text": "Длина спуска, минут"
+  },
+  "labels": {
+    "type": "checkbox",
+    "value": true,
+    "text": "Подписи кругов и цитаты"
+  },
+  "fps": {
+    "type": "slider",
+    "value": 30,
+    "min": 15,
+    "max": 60,
+    "step": 5,
+    "text": "FPS (меньше — тише видеокарта)"
+  }
+}

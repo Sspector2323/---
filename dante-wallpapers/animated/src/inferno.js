@@ -1,0 +1,1003 @@
+/* INFERNO — живые обои на 3 монитора.
+ * Монитор 1: круги I–III, монитор 2: IV–VI, монитор 3: VII–IX.
+ * Данте и Вергилий проходят все девять кругов за один цикл (по умолчанию 9 минут),
+ * затем «e quindi uscimmo a riveder le stelle» — и всё начинается заново.
+ * Время берётся из системных часов, поэтому три отдельных обоины идут синхронно:
+ * поэты уходят с правого края одного монитора и появляются на следующем.
+ *
+ * Настройки (window.INFERNO_CONFIG или параметры URL):
+ *   screen = 1 | 2 | 3 | all | auto   (all — все 9 кругов на одном широком холсте,
+ *                                       auto — показывать тот монитор, где сейчас поэты)
+ *   cycle  = длительность цикла в секундах (300–900, по умолчанию 540)
+ *   fps    = ограничение кадров (по умолчанию 30)
+ *   labels = 1 | 0
+ */
+(function () {
+  "use strict";
+
+  const cfg = Object.assign({ screen: "auto", cycle: 540, fps: 30, labels: 1 }, window.INFERNO_CONFIG || {});
+  const qs = new URLSearchParams(location.search);
+  for (const k of ["screen", "cycle", "fps", "labels", "t"]) if (qs.has(k)) cfg[k] = qs.get(k);
+  cfg.cycle = Math.min(1200, Math.max(120, +cfg.cycle || 540));
+  cfg.fps = Math.min(60, Math.max(10, +cfg.fps || 30));
+  cfg.labels = cfg.labels !== "0" && cfg.labels !== 0;
+
+  const OUTRO = 14;             // секунд звёздного финала
+  const VH = 360;               // виртуальная высота одной полосы-круга
+
+  // ---------- утилиты ----------
+  const TAU = Math.PI * 2;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const smooth = (t) => t * t * (3 - 2 * t);
+  function rngf(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const hash = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+  const noise1 = (x) => { const i = Math.floor(x), f = x - i; const u = f * f * (3 - 2 * f); return lerp(hash(i), hash(i + 1), u); };
+
+  // ---------- фигуры ----------
+  // Душа-человечек высотой h, ноги в (x, y). o: rot, lean, la, ra, ll, rl (углы от вертикали вниз), col, head
+  function soul(c, x, y, h, o) {
+    o = o || {};
+    c.save();
+    c.translate(x, y);
+    if (o.rot) c.rotate(o.rot);
+    const k = h / 40;
+    c.scale(k, k);
+    const lean = o.lean || 0;
+    const sx = lean, sy = -30;
+    c.strokeStyle = o.col || "rgba(232,222,208,0.92)";
+    c.fillStyle = o.col || "rgba(232,222,208,0.92)";
+    c.lineCap = "round"; c.lineJoin = "round";
+    const leg = (a, bend) => {
+      const kx = Math.sin(a) * 9, ky = -18 + Math.cos(a) * 9;
+      const a2 = a + (bend || 0);
+      c.moveTo(0, -18); c.lineTo(kx, ky); c.lineTo(kx + Math.sin(a2) * 9, ky + Math.cos(a2) * 9);
+    };
+    const arm = (a, bend) => {
+      const ex = sx + Math.sin(a) * 7, ey = sy + 1 + Math.cos(a) * 7;
+      const a2 = a + (bend || 0);
+      c.moveTo(sx, sy + 1); c.lineTo(ex, ey); c.lineTo(ex + Math.sin(a2) * 7, ey + Math.cos(a2) * 7);
+    };
+    c.beginPath();
+    if (!o.noLegs) { leg(o.ll ?? -0.18, o.lb); leg(o.rl ?? 0.18, o.rb); }
+    c.lineWidth = 2.6; c.stroke();
+    c.beginPath(); // торс
+    c.moveTo(-2.2, -18); c.lineTo(2.2, -18); c.lineTo(sx + 3.4, sy); c.lineTo(sx - 3.4, sy); c.closePath();
+    c.fill();
+    c.beginPath(); arm(o.la ?? -0.25, o.lab); arm(o.ra ?? 0.25, o.rab);
+    c.lineWidth = 2.2; c.stroke();
+    if (o.head !== false) {
+      const hx = sx + (o.hx || 0), hy = sy - 5.2 + (o.hy || 0);
+      c.beginPath(); c.arc(hx, hy, 3.6, 0, TAU); c.fill();
+    }
+    c.restore();
+  }
+
+  // Поэты в плащах: Данте (красный, капюшон) и Вергилий (серо-синий, лавр)
+  function pilgrim(c, x, y, h, phase, who, dir) {
+    c.save();
+    c.translate(x, y - Math.abs(Math.sin(phase)) * h * 0.035);
+    c.scale((dir || 1) * h / 40, h / 40);
+    const robe = who === "dante" ? "#b3262c" : "#58657e";
+    const robeL = who === "dante" ? "#e04a44" : "#8592ad";
+    // свечение, чтобы их было видно в любом круге
+    const g = c.createRadialGradient(0, -20, 2, 0, -20, 34);
+    g.addColorStop(0, "rgba(255,230,180,0.28)"); g.addColorStop(1, "rgba(255,230,180,0)");
+    c.fillStyle = g; c.fillRect(-36, -56, 72, 72);
+    const sw = Math.sin(phase) * 2.2;
+    c.fillStyle = robe;
+    c.beginPath();
+    c.moveTo(-3.6, -31); c.lineTo(3.6, -31);
+    c.quadraticCurveTo(7, -14, 7.5 + sw, 0); c.lineTo(-7.5 + sw, 0);
+    c.quadraticCurveTo(-7, -14, -3.6, -31); c.fill();
+    c.strokeStyle = robeL; c.lineWidth = 1; c.stroke();
+    // рука вперёд
+    c.strokeStyle = robe; c.lineWidth = 2.6; c.lineCap = "round";
+    c.beginPath(); c.moveTo(1, -27); c.lineTo(6, -20 + sw * 0.4); c.stroke();
+    // голова
+    c.fillStyle = "#e8d2b8"; c.beginPath(); c.arc(0.6, -35, 3.8, 0, TAU); c.fill();
+    if (who === "dante") {
+      c.fillStyle = "#c22d30"; c.beginPath();
+      c.moveTo(-4.4, -34); c.quadraticCurveTo(-2, -42.5, 3.5, -39.5); c.lineTo(4.6, -36.6); c.quadraticCurveTo(0, -38.5, -2.8, -31.5); c.fill();
+    } else {
+      c.strokeStyle = "#7fb069"; c.lineWidth = 1.4;
+      c.beginPath(); c.arc(0.6, -35.5, 4.4, Math.PI * 1.05, Math.PI * 1.95); c.stroke();
+    }
+    c.restore();
+  }
+
+  function flame(c, x, y, w, h, t, seed, alpha) {
+    const f1 = noise1(t * 3 + seed * 7.3), f2 = noise1(t * 4.7 + seed * 3.1);
+    const hh = h * (0.75 + 0.45 * f1), sway = (f2 - 0.5) * w * 0.9;
+    const g = c.createLinearGradient(x, y, x, y - hh);
+    g.addColorStop(0, `rgba(255,240,170,${alpha ?? 0.95})`);
+    g.addColorStop(0.35, `rgba(255,140,30,${(alpha ?? 0.95) * 0.85})`);
+    g.addColorStop(1, "rgba(200,30,10,0)");
+    c.fillStyle = g;
+    c.beginPath();
+    c.moveTo(x - w / 2, y);
+    c.bezierCurveTo(x - w / 2, y - hh * 0.45, x + sway - w * 0.2, y - hh * 0.6, x + sway, y - hh);
+    c.bezierCurveTo(x + sway + w * 0.2, y - hh * 0.6, x + w / 2, y - hh * 0.45, x + w / 2, y);
+    c.closePath(); c.fill();
+  }
+
+  function glowDot(c, x, y, r, col) {
+    const g = c.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, col); g.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  function vgrad(c, w, h, stops) {
+    const g = c.createLinearGradient(0, 0, 0, h);
+    stops.forEach(([p, col]) => g.addColorStop(p, col));
+    c.fillStyle = g; c.fillRect(0, 0, w, h);
+  }
+
+  // неровная линия земли/скал
+  function ridge(c, w, y0, amp, freq, seed, fill, bottom) {
+    c.beginPath(); c.moveTo(0, bottom ?? VH);
+    for (let x = 0; x <= w + 8; x += 8) c.lineTo(x, y0 + (noise1(x * freq + seed) - 0.5) * amp + (noise1(x * freq * 4 + seed * 2) - 0.5) * amp * 0.3);
+    c.lineTo(w, bottom ?? VH); c.closePath(); c.fillStyle = fill; c.fill();
+  }
+
+  // ======================================================================
+  //                               К Р У Г И
+  // ======================================================================
+  const CIRCLES = [];
+
+  // ---------- I. ЛИМБ ----------
+  CIRCLES.push({
+    num: "I", it: "LIMBO", ru: "Лимб", who: "некрещёные младенцы и добродетельные язычники", canto: "Песнь IV",
+    q: "sanza speme vivemo in disio", qru: "без надежды живём в желании", accent: "#b9c3e0", ground: 300,
+    init(r, W) {
+      this.souls = Array.from({ length: 34 }, (_, i) => ({ x: r() * W, y: 288 + r() * 24, h: 32 + r() * 12, ph: r() * TAU, sp: (r() - 0.5) * 5 }));
+      this.sighs = Array.from({ length: 26 }, () => ({ s: r(), ph: r() }));
+    },
+    bg(c, W) {
+      vgrad(c, W, VH, [[0, "#0d1017"], [0.6, "#1b2230"], [1, "#222a33"]]);
+      const cx = W * 0.64;
+      glowDot(c, cx, 220, 260, "rgba(190,200,170,0.20)"); // «огонь, побеждавший полусферу тьмы»
+      // благородный замок, семь стен
+      for (let i = 0; i < 7; i++) {
+        const w = 330 - i * 38, h = 40 + i * 13;
+        c.fillStyle = `rgb(${34 + i * 6},${40 + i * 6},${46 + i * 5})`;
+        c.fillRect(cx - w / 2, 262 - h, w, h);
+        for (let j = 0; j <= 6; j++) c.fillRect(cx - w / 2 + j * (w / 6) - 4, 262 - h - 8, 8, 8);
+      }
+      c.fillStyle = "#4c5560"; c.fillRect(cx - 12, 262 - 132, 24, 132);
+      c.beginPath(); c.moveTo(cx - 16, 130); c.lineTo(cx, 98); c.lineTo(cx + 16, 130); c.fill();
+      c.fillStyle = "rgba(255,240,190,0.55)"; c.fillRect(cx - 3, 150, 6, 10);
+      ridge(c, W, 290, 16, 0.004, 3, "#1d2a24");
+      // ручеёк перед замком
+      c.strokeStyle = "rgba(150,180,200,0.35)"; c.lineWidth = 2;
+      c.beginPath(); c.ellipse(cx, 276, 210, 7, 0, 0, TAU); c.stroke();
+      ridge(c, W, 312, 10, 0.006, 9, "#151d19");
+    },
+    draw(c, t, W) {
+      for (const s of this.souls) {
+        const x = ((s.x + t * s.sp) % (W + 60) + W + 60) % (W + 60) - 30;
+        const sway = Math.sin(t * 0.6 + s.ph) * 0.06;
+        soul(c, x, s.y, s.h, { lean: sway * 6, hx: 1.5, hy: 1.6, la: -0.1, ra: 0.1, ll: -0.08 + sway, rl: 0.08 + sway, col: "rgba(200,208,220,0.62)" });
+      }
+      // вздохи: тающие кольца над головами
+      c.lineWidth = 1.2;
+      for (const sg of this.sighs) {
+        const p = (t * 0.12 + sg.ph) % 1;
+        const s = this.souls[Math.floor(sg.s * this.souls.length)];
+        const x = ((s.x + t * s.sp) % (W + 60) + W + 60) % (W + 60) - 30;
+        c.strokeStyle = `rgba(200,210,230,${0.45 * (1 - p)})`;
+        c.beginPath(); c.arc(x + 2, s.y - s.h - 6 - p * 50, 2 + p * 9, 0, TAU); c.stroke();
+      }
+      // туман
+      for (let i = 0; i < 3; i++) {
+        const y = 250 + i * 25, off = (t * (6 + i * 3)) % W;
+        const g = c.createLinearGradient(0, y - 20, 0, y + 20);
+        g.addColorStop(0, "rgba(160,170,190,0)"); g.addColorStop(0.5, `rgba(160,170,190,${0.06 + i * 0.02})`); g.addColorStop(1, "rgba(160,170,190,0)");
+        c.fillStyle = g; c.fillRect(-off, y - 20, W * 2, 40);
+      }
+    },
+  });
+
+  // ---------- II. СЛАДОСТРАСТИЕ ----------
+  CIRCLES.push({
+    num: "II", it: "LUSSURIA", ru: "Сладострастие", who: "сладострастных вечно носит адский вихрь", canto: "Песнь V",
+    q: "Amor, ch'a nullo amato amar perdona", qru: "Любовь, что любить велит любимым", accent: "#ff5fb4", ground: 322,
+    init(r, W) {
+      this.flock = Array.from({ length: 70 }, () => ({ ph: r() * TAU, rr: 0.7 + r() * 0.5, sp: 0.18 + r() * 0.12, wob: r() * TAU, h: 20 + r() * 10 }));
+      this.streaks = Array.from({ length: 50 }, () => ({ ph: r() * TAU, rr: 0.5 + r() * 0.8, len: 0.2 + r() * 0.5 }));
+    },
+    bg(c, W) {
+      vgrad(c, W, VH, [[0, "#0e0510"], [0.5, "#240a26"], [1, "#160612"]]);
+      glowDot(c, W * 0.5, 170, W * 0.45, "rgba(150,40,110,0.18)");
+      ridge(c, W, 318, 14, 0.005, 21, "#1a0c14");
+      ridge(c, W, 340, 10, 0.01, 4, "#0e060b");
+    },
+    vortex(ph, rr, W, t) {
+      const cx = W * 0.5, cy = 165, ax = W * 0.43 * rr, ay = 105 * rr;
+      return [cx + Math.cos(ph) * ax + Math.sin(ph * 3 + t) * 20, cy + Math.sin(ph) * ay * (0.8 + 0.2 * Math.cos(ph * 2)) - Math.cos(ph) * 25];
+    },
+    draw(c, t, W) {
+      // молнии бури
+      const fl = noise1(t * 0.7);
+      if (fl > 0.82) { c.fillStyle = `rgba(230,180,255,${(fl - 0.82) * 1.2})`; c.fillRect(0, 0, W, VH); }
+      c.lineCap = "round";
+      for (const s of this.streaks) {
+        const ph = s.ph + t * 0.45;
+        c.strokeStyle = "rgba(255,160,220,0.13)"; c.lineWidth = 1.5;
+        c.beginPath();
+        for (let i = 0; i <= 10; i++) { const [x, y] = this.vortex(ph - i * s.len * 0.1, s.rr, W, t * 0.2); i ? c.lineTo(x, y) : c.moveTo(x, y); }
+        c.stroke();
+      }
+      for (const s of this.flock) {
+        const ph = s.ph + t * s.sp;
+        const [x, y] = this.vortex(ph, s.rr, W, t * 0.2);
+        const [x2, y2] = this.vortex(ph + 0.01, s.rr, W, t * 0.2);
+        const ang = Math.atan2(y2 - y, x2 - x);
+        const fl = Math.sin(t * 5 + s.wob);
+        soul(c, x, y, s.h, { rot: ang - Math.PI / 2 + 0.4 * Math.sin(t + s.wob), la: Math.PI - 0.6 + fl * 0.5, ra: -Math.PI + 0.6 - fl * 0.5, ll: -0.3 + fl * 0.3, rl: 0.3 - fl * 0.3, col: "rgba(245,200,225,0.72)" });
+      }
+      // Паола и Франческа — вместе, медленнее остальных
+      const ph = t * 0.11;
+      const [px, py] = this.vortex(ph, 0.55, W, 0);
+      glowDot(c, px, py - 12, 46, "rgba(255,120,170,0.35)");
+      soul(c, px - 7, py, 30, { rot: -1.2, la: Math.PI - 0.4, ra: 1.2, col: "rgba(255,225,235,0.95)" });
+      soul(c, px + 7, py + 4, 28, { rot: -1.0, la: -1.1, ra: -Math.PI + 0.5, col: "rgba(255,225,235,0.95)" });
+    },
+  });
+
+  // ---------- III. ЧРЕВОУГОДИЕ ----------
+  CIRCLES.push({
+    num: "III", it: "GOLA", ru: "Чревоугодие", who: "лежат в грязи под вечным ледяным дождём; их терзает Цербер", canto: "Песнь VI",
+    q: "Cerbero, fiera crudele e diversa", qru: "Цербер, зверь жестокий и чудовищный", accent: "#a8d050", ground: 306,
+    init(r, W) {
+      this.lying = Array.from({ length: 30 }, () => ({ x: r() * W, y: 300 + r() * 26, h: 24 + r() * 8, ph: r() * TAU, d: r() < 0.5 ? 1 : -1 }));
+      this.drops = Array.from({ length: 420 }, () => ({ x: r(), y: r(), k: r() }));
+    },
+    bg(c, W) {
+      vgrad(c, W, VH, [[0, "#0b0c08"], [0.55, "#20231a"], [1, "#1a1710"]]);
+      ridge(c, W, 296, 12, 0.003, 7, "#2a2618");
+      // лужи
+      const r = rngf(33);
+      for (let i = 0; i < 14; i++) { c.fillStyle = "rgba(90,100,80,0.22)"; c.beginPath(); c.ellipse(r() * W, 305 + r() * 40, 30 + r() * 60, 3 + r() * 4, 0, 0, TAU); c.fill(); }
+    },
+    cerberus(c, x, y, t, dir) {
+      c.save(); c.translate(x, y); c.scale(dir, 1);
+      c.fillStyle = "#0a0806";
+      const step = Math.sin(t * 5);
+      c.beginPath(); c.ellipse(0, -34, 48, 20, 0, 0, TAU); c.fill();
+      c.lineWidth = 7; c.strokeStyle = "#0a0806"; c.lineCap = "round";
+      c.beginPath();
+      for (const [lx, s] of [[-32, 1], [-20, -1], [22, -1], [34, 1]]) { c.moveTo(lx, -24); c.lineTo(lx + step * 7 * s, 0); }
+      c.stroke();
+      c.beginPath(); c.moveTo(-46, -36); c.quadraticCurveTo(-70, -48, -66, -66 + step * 4); c.lineWidth = 4; c.stroke();
+      for (let i = 0; i < 3; i++) {
+        const bob = Math.sin(t * 3 + i * 2) * 5, hx = 46 + i * 9, hy = -62 + i * 12 + bob;
+        c.lineWidth = 9; c.beginPath(); c.moveTo(30, -42); c.quadraticCurveTo(44, -52, hx, hy); c.stroke();
+        c.beginPath(); c.ellipse(hx + 7, hy, 13, 8, 0.25, 0, TAU); c.fill();
+        c.fillStyle = "#ff3a1a"; c.beginPath(); c.arc(hx + 9, hy - 3, 1.8, 0, TAU); c.fill(); c.fillStyle = "#0a0806";
+        const jaw = Math.max(0, Math.sin(t * 6 + i)) * 5;
+        c.beginPath(); c.moveTo(hx + 8, hy + 3); c.lineTo(hx + 22, hy + 2 + jaw); c.lineTo(hx + 10, hy + 7 + jaw); c.fill();
+      }
+      c.restore();
+    },
+    draw(c, t, W) {
+      for (const s of this.lying) {
+        const roll = Math.sin(t * 0.5 + s.ph);
+        const writhe = Math.sin(t * 1.7 + s.ph) * 0.25;
+        soul(c, s.x, s.y, s.h, { rot: s.d * (Math.PI / 2) + roll * 0.08, la: -1.2 + writhe, ra: 1.0 - writhe, ll: -0.1 + writhe * 0.5, rl: 0.2, col: "rgba(190,190,160,0.62)" });
+      }
+      // Цербер ходит туда-сюда
+      const cyc = (t / 34) % 1, cx = W * (0.2 + 0.6 * (0.5 - 0.5 * Math.cos(cyc * TAU)));
+      this.cerberus(c, cx, 316, t, Math.sin(cyc * TAU) > 0 ? 1 : -1);
+      // дождь, град, мокрый снег
+      c.strokeStyle = "rgba(170,180,160,0.32)"; c.lineWidth = 1.2;
+      c.beginPath();
+      for (const d of this.drops) {
+        const y = ((d.y + t * (0.9 + d.k * 0.6)) % 1) * (VH + 40) - 20;
+        const x = ((d.x + t * 0.06) % 1) * W - y * 0.25;
+        if (d.k < 0.8) { c.moveTo(x, y); c.lineTo(x - 4, y + 14); }
+      }
+      c.stroke();
+      c.fillStyle = "rgba(220,225,215,0.55)";
+      for (const d of this.drops) if (d.k >= 0.8) {
+        const y = ((d.y + t * 0.5) % 1) * (VH + 40) - 20;
+        const x = ((d.x + t * 0.03) % 1) * W - y * 0.15 + Math.sin(t + d.k * 40) * 4;
+        c.fillRect(x, y, 2.5, 2.5);
+      }
+    },
+  });
+
+  // ---------- IV. СКУПОСТЬ И РАСТОЧИТЕЛЬСТВО ----------
+  CIRCLES.push({
+    num: "IV", it: "AVARIZIA", ru: "Скупость", who: "скупцы и моты катят грузы навстречу и сшибаются", canto: "Песнь VII",
+    q: "mal dare e mal tener lo mondo pulcro ha tolto loro", qru: "худо давали и худо хранили — и потеряли прекрасный мир", accent: "#f2c14e", ground: 306,
+    init(r) { this.rows = [0, 1, 2].map((i) => ({ y: 286 + i * 18, h: 24 + i * 4, off: r() * 0.08 })); },
+    bg(c, W) {
+      vgrad(c, W, VH, [[0, "#0d0904"], [0.6, "#2b1d08"], [1, "#1c1206"]]);
+      glowDot(c, W * 0.5, 280, 220, "rgba(255,190,80,0.12)");
+      ridge(c, W, 300, 10, 0.004, 15, "#2e2210");
+      // Плутос на скале
+      c.fillStyle = "#120b04";
+      c.beginPath(); c.moveTo(W * 0.08, 300); c.lineTo(W * 0.1, 215); c.lineTo(W * 0.14, 205); c.lineTo(W * 0.16, 300); c.fill();
+    },
+    draw(c, t, W) {
+      const P = 16;
+      for (const row of this.rows) {
+        const ph = ((t / P + row.off) % 1);
+        // 0..0.45 — толкают к центру, 0.45..0.55 — удар, 0.55..1 — откатываются
+        let k;
+        if (ph < 0.45) k = smooth(ph / 0.45);
+        else if (ph < 0.55) k = 1;
+        else k = 1 - smooth((ph - 0.55) / 0.45);
+        const pushing = ph < 0.5;
+        const shake = ph > 0.44 && ph < 0.56 ? Math.sin(t * 60) * 3 : 0;
+        for (const side of [-1, 1]) {
+          for (let i = 0; i < 4; i++) {
+            const base = W * 0.5 + side * (40 + i * 150);
+            const far = W * 0.5 + side * (W * 0.45 + i * 30);
+            const bx = lerp(far, base, k) + shake * side;
+            const br = 15 + row.h * 0.25;
+            const pdir = pushing ? -side : side;    // куда смотрит толкающий
+            const px = bx + side * (br + 8);
+            const g = c.createRadialGradient(bx - br * 0.3, row.y - br - br * 0.3, 2, bx, row.y - br, br);
+            g.addColorStop(0, "#ffe7a0"); g.addColorStop(0.5, "#b8862a"); g.addColorStop(1, "#3d2a08");
+            c.fillStyle = g; c.beginPath(); c.arc(bx, row.y - br, br, 0, TAU); c.fill();
+            const wk = Math.sin(t * 5 + i) * 0.35;
+            soul(c, px, row.y, row.h, { lean: pdir * 6, la: pdir * 1.3, ra: pdir * 1.1, ll: -pdir * 0.3 + wk, rl: -pdir * 0.3 - wk, col: "rgba(230,205,160,0.82)" });
+          }
+        }
+        if (ph > 0.44 && ph < 0.6 && row === this.rows[1]) {
+          const a = 1 - Math.abs(ph - 0.5) / 0.1;
+          glowDot(c, W * 0.5, row.y - 30, 90, `rgba(255,220,140,${0.5 * a})`);
+          c.font = "italic 17px Georgia, serif"; c.textAlign = "center";
+          c.fillStyle = `rgba(255,230,180,${a})`;
+          c.fillText("«Perché tieni?»", W * 0.5 - 130, 230);
+          c.fillText("«Perché burli?»", W * 0.5 + 130, 230);
+          c.font = "13px Georgia, serif"; c.fillStyle = `rgba(230,200,160,${a * 0.8})`;
+          c.fillText("«Что копишь?»", W * 0.5 - 130, 248); c.fillText("«Что мечешь?»", W * 0.5 + 130, 248);
+        }
+      }
+    },
+  });
+
+  // ---------- V. ГНЕВ ----------
+  CIRCLES.push({
+    num: "V", it: "IRA", ru: "Гнев", who: "гневные дерутся в болоте Стикс, угрюмые булькают на дне", canto: "Песни VII–VIII",
+    q: "Tristi fummo ne l'aere dolce che dal sol s'allegra", qru: "угрюмы были мы в сладком воздухе, что радуется солнцу", accent: "#3fd0b8", ground: 262,
+    init(r, W) {
+      this.fighters = Array.from({ length: 22 }, () => ({ x: r() * W, y: 262 + r() * 50, h: 30 + r() * 10, ph: r() * TAU, d: r() < 0.5 ? -1 : 1 }));
+      this.bub = Array.from({ length: 60 }, () => ({ x: r() * W, y: 270 + r() * 80, ph: r() }));
+    },
+    bg(c, W) {
+      vgrad(c, W, VH, [[0, "#050b0b"], [0.6, "#10201f"], [1, "#0a1312"]]);
+      // башня Дита с сигнальными огнями
+      c.fillStyle = "#081010";
+      c.fillRect(W * 0.9, 140, 34, 125); c.fillRect(W * 0.9 - 6, 132, 46, 12);
+      glowDot(c, W * 0.9 + 6, 128, 30, "rgba(255,120,40,0.6)"); glowDot(c, W * 0.9 + 28, 128, 30, "rgba(255,120,40,0.6)");
+      c.fillStyle = "#0c1717"; c.fillRect(0, 258, W, VH);
+      const g = c.createLinearGradient(0, 258, 0, VH);
+      g.addColorStop(0, "rgba(60,110,95,0.35)"); g.addColorStop(1, "rgba(5,15,12,0.9)");
+      c.fillStyle = g; c.fillRect(0, 258, W, VH);
+    },
+    path(p, W) { return { x: -60 + p * (W + 120), y: 268, boat: true }; },
+    draw(c, t, W, act) {
+      for (const f of this.fighters) {
+        const hit = Math.sin(t * 3.2 + f.ph);
+        const bob = Math.sin(t * 1.3 + f.ph) * 2;
+        c.save(); c.beginPath(); c.rect(f.x - 30, 0, 60, f.y - f.h * 0.42 + bob); c.clip();
+        soul(c, f.x, f.y + bob, f.h, { lean: f.d * hit * 4, la: f.d * (1.8 + hit * 1.2), ra: f.d * (2.6 - hit), lab: -0.6, col: "rgba(150,190,170,0.85)" });
+        c.restore();
+        // круги по воде
+        c.strokeStyle = "rgba(120,180,160,0.25)"; c.lineWidth = 1;
+        c.beginPath(); c.ellipse(f.x, f.y - f.h * 0.42 + bob + 1, 12 + Math.abs(hit) * 6, 2.5, 0, 0, TAU); c.stroke();
+      }
+      // «гимн, булькающий в горле» — пузыри угрюмых
+      for (const b of this.bub) {
+        const p = (t * 0.25 + b.ph) % 1;
+        c.strokeStyle = `rgba(140,190,170,${0.5 * (1 - p)})`;
+        c.beginPath(); c.arc(b.x, lerp(b.y, 262, p), 1.5 + p * 3, 0, TAU); c.stroke();
+      }
+      // дым над Стиксом
+      for (let i = 0; i < 2; i++) {
+        const off = (t * (8 + i * 5)) % W;
+        c.fillStyle = `rgba(90,120,110,${0.05 + i * 0.03})`;
+        c.fillRect(-off, 236 + i * 14, W * 2, 18);
+      }
+      // лодка Флегия: без поэтов стоит у берега
+      if (!act) this.boat(c, 70, 270, t);
+    },
+    boat(c, x, y, t) {
+      c.save(); c.translate(x, y + Math.sin(t * 1.2) * 1.5);
+      c.fillStyle = "#1e1208"; c.beginPath();
+      c.moveTo(-60, -8); c.quadraticCurveTo(0, 16, 60, -10); c.lineTo(52, -2); c.quadraticCurveTo(0, 8, -54, -1); c.closePath(); c.fill();
+      c.restore();
+      soul(c, x + 48, y - 4, 40, { lean: 5, la: 2.3, ra: 2.5, col: "#0d0a08" }); // Флегий с шестом
+      c.strokeStyle = "#0d0a08"; c.lineWidth = 2.5; c.beginPath(); c.moveTo(x + 66, y - 52); c.lineTo(x + 40, y + 18); c.stroke();
+    },
+  });
+
+  // ---------- VI. ЕРЕСЬ ----------
+  CIRCLES.push({
+    num: "VI", it: "ERESIA", ru: "Ересь", who: "еретики горят в раскрытых гробницах за стенами Дита", canto: "Песни IX–XI",
+    q: "Qui son li eresiarche con lor seguaci", qru: "здесь ересиархи со своими последователями", accent: "#ff8a2a", ground: 312,
+    init(r, W) {
+      this.tombs = [];
+      for (let row = 0; row < 2; row++) {
+        const n = Math.floor(W / (row ? 120 : 150));
+        for (let i = 0; i < n; i++) this.tombs.push({ x: (i + 0.5 + (r() - 0.5) * 0.3) * W / n, y: row ? 300 : 334, s: row ? 0.8 : 1, ph: r() * 20, soul: r() < 0.55 });
+      }
+    },
+    bg(c, W) {
+      vgrad(c, W, VH, [[0, "#120403"], [0.6, "#2c0a05"], [1, "#160604"]]);
+      // раскалённые стены города Дит
+      c.fillStyle = "#2a0905";
+      c.fillRect(0, 170, W, 90);
+      for (let x = 0; x < W; x += 26) c.fillRect(x, 160, 14, 12);
+      const r = rngf(66);
+      for (let i = 0; i < 9; i++) {
+        const x = r() * W, h = 50 + r() * 70, w = 26 + r() * 20;
+        c.fillStyle = "#330b05"; c.fillRect(x, 170 - h, w, h + 10);
+        c.beginPath(); c.arc(x + w / 2, 170 - h, w / 2, Math.PI, 0); c.fill();  // «мечети» Дита
+        c.fillStyle = "rgba(255,90,30,0.5)"; c.fillRect(x + w / 2 - 2, 175 - h + 10, 4, 8);
+      }
+      const g = c.createLinearGradient(0, 160, 0, 260);
+      g.addColorStop(0, "rgba(255,70,20,0.07)"); g.addColorStop(1, "rgba(255,70,20,0)");
+      c.fillStyle = g; c.fillRect(0, 100, W, 160);
+      ridge(c, W, 270, 8, 0.004, 31, "#200805");
+    },
+    draw(c, t, W) {
+      // фурии на башне
+      for (let i = 0; i < 3; i++) {
+        const x = W * 0.3 + i * 24, y = 160 + Math.sin(t * 2 + i) * 2;
+        c.fillStyle = "#120302";
+        soul(c, x, y, 22, { la: 2.4, ra: -2.4, col: "#140303" });
+        const fl = Math.sin(t * 8 + i) * 0.4;
+        c.beginPath(); c.moveTo(x, y - 18); c.lineTo(x - 18, y - 30 + fl * 10); c.lineTo(x - 6, y - 14); c.fill();
+        c.beginPath(); c.moveTo(x, y - 18); c.lineTo(x + 18, y - 30 + fl * 10); c.lineTo(x + 6, y - 14); c.fill();
+      }
+      for (const tb of this.tombs) {
+        const s = tb.s, x = tb.x, y = tb.y;
+        // каменный гроб и сдвинутая крышка
+        c.fillStyle = s < 1 ? "#3b1a12" : "#4a2418";
+        c.fillRect(x - 34 * s, y - 20 * s, 68 * s, 20 * s);
+        c.fillStyle = "#2a120c";
+        c.save(); c.translate(x + 34 * s, y - 20 * s); c.rotate(0.5); c.fillRect(0, -4 * s, 70 * s, 7 * s); c.restore();
+        glowDot(c, x, y - 22 * s, 60 * s, "rgba(255,110,30,0.25)");
+        if (tb.soul) {
+          const rise = (Math.sin(t * 0.4 + tb.ph) * 0.5 + 0.5);
+          c.save(); c.beginPath(); c.rect(x - 40, 0, 80, y - 18 * s); c.clip();
+          soul(c, x, y + 8 * s - rise * 14 * s, 34 * s, { la: 2.6 + Math.sin(t * 3 + tb.ph) * 0.3, ra: -2.5, col: "rgba(255,200,150,0.85)" });
+          c.restore();
+        }
+        for (let j = 0; j < 3; j++) flame(c, x - 20 * s + j * 20 * s, y - 18 * s, 18 * s, 42 * s, t, tb.ph + j, 0.85);
+      }
+      // Фарината: встаёт «от пояса и выше»
+      const fx = W * 0.47, rise = smooth(clamp(Math.sin(t * 0.15) * 1.5, 0, 1));
+      c.save(); c.beginPath(); c.rect(fx - 50, 0, 100, 315); c.clip();
+      soul(c, fx, 340 - rise * 26, 50, { la: 0.2, ra: -0.3, col: "rgba(255,225,190,0.95)" });
+      c.restore();
+    },
+  });
+
+  // ---------- VII. НАСИЛИЕ ----------
+  CIRCLES.push({
+    num: "VII", it: "VIOLENZA", ru: "Насилие", who: "кровавый Флегетон · лес самоубийц · огненный песок", canto: "Песни XII–XVII",
+    q: "Uomini fummo, e or siam fatti sterpi", qru: "мы были людьми, а стали терновником", accent: "#ff4040", ground: 300,
+    init(r, W) {
+      this.boil = Array.from({ length: 26 }, () => ({ x: r() * W * 0.34, d: r(), ph: r() * TAU }));
+      this.trees = Array.from({ length: 11 }, (_, i) => ({ x: W * 0.37 + (i + r() * 0.6) * W * 0.27 / 11, h: 120 + r() * 80, seed: r() * 1000 }));
+      this.flakes = Array.from({ length: 110 }, () => ({ x: W * (0.66 + r() * 0.34), y: r(), sp: 0.04 + r() * 0.04, ph: r() * TAU }));
+      this.sand = Array.from({ length: 18 }, () => ({ x: W * (0.68 + r() * 0.3), y: 300 + r() * 40, type: Math.floor(r() * 3), ph: r() * TAU }));
+      this.harp = Array.from({ length: 4 }, () => ({ ph: r() * TAU }));
+    },
+    bg(c, W) {
+      vgrad(c, W, VH, [[0, "#0f0303"], [0.6, "#260806"], [1, "#180504"]]);
+      // Флегетон
+      const rv = c.createLinearGradient(0, 240, 0, VH);
+      rv.addColorStop(0, "#7a0a0a"); rv.addColorStop(1, "#2a0202");
+      c.fillStyle = rv; c.fillRect(0, 240, W * 0.35, VH);
+      c.fillStyle = "#1a0606"; c.fillRect(W * 0.345, 226, 14, VH);
+      // лес
+      const lg = c.createLinearGradient(0, 120, 0, VH);
+      lg.addColorStop(0, "rgba(20,10,10,0)"); lg.addColorStop(1, "#140808");
+      c.fillStyle = lg; c.fillRect(W * 0.35, 120, W * 0.31, VH);
+      ridge(c, W, 310, 10, 0.01, 2, "#100505");
+      const r = rngf(77);
+      const branch = (x, y, a, l, d) => {
+        if (d === 0) return;
+        const x2 = x + Math.cos(a) * l, y2 = y + Math.sin(a) * l;
+        c.lineWidth = d * 1.5; c.beginPath(); c.moveTo(x, y); c.lineTo(x2, y2); c.stroke();
+        branch(x2, y2, a - 0.3 - r() * 0.6, l * (0.6 + r() * 0.2), d - 1);
+        branch(x2, y2, a + 0.3 + r() * 0.6, l * (0.6 + r() * 0.2), d - 1);
+      };
+      c.strokeStyle = "#060202"; c.lineCap = "round";
+      for (const tr of this.trees) branch(tr.x, 320, -Math.PI / 2 + (r() - 0.5) * 0.4, tr.h * 0.38, 6);
+      // огненный песок
+      const sg = c.createLinearGradient(0, 290, 0, VH);
+      sg.addColorStop(0, "#5a2a10"); sg.addColorStop(1, "#2a1006");
+      c.fillStyle = sg; c.fillRect(W * 0.66, 296, W * 0.34, VH);
+      c.fillStyle = "#0a0303"; c.fillRect(W * 0.655, 226, 10, VH);
+    },
+    path(p, W) { return { x: -60 + p * (W + 120), y: p < 0.35 ? 238 : p < 0.66 ? 312 : 300 }; },
+    draw(c, t, W) {
+      // кипящая кровь и души в ней
+      for (const b of this.boil) {
+        const y = 250 + b.d * 90, bob = Math.sin(t * 1.5 + b.ph) * 3;
+        c.save(); c.beginPath(); c.rect(b.x - 20, 0, 40, y - 14 + bob); c.clip();
+        soul(c, b.x, y + bob, 32, { la: 2.6, ra: -2.8 + Math.sin(t * 2 + b.ph) * 0.4, col: "rgba(255,170,150,0.8)" });
+        c.restore();
+        glowDot(c, b.x, y - 14 + bob, 14, "rgba(255,80,40,0.35)");
+      }
+      for (let i = 0; i < 26; i++) { const p = (t * 0.4 + i * 0.37) % 1; c.fillStyle = `rgba(255,120,90,${0.4 * (1 - p)})`; c.fillRect((i * 97.3) % (W * 0.34), 242 + ((i * 53) % 100) - p * 30, 2, 2); }
+      // кентавры скачут вдоль берега и стреляют
+      for (let i = 0; i < 3; i++) {
+        const x = ((t * 40 + i * W * 0.12) % (W * 0.4)) - 20, y = 240;
+        if (x > W * 0.33) continue;
+        c.fillStyle = "#0d0303"; c.strokeStyle = "#0d0303"; c.lineCap = "round";
+        c.beginPath(); c.ellipse(x, y - 22, 22, 9, 0, 0, TAU); c.fill();
+        const g = Math.sin(t * 9 + i);
+        c.lineWidth = 3.5; c.beginPath();
+        c.moveTo(x - 15, y - 16); c.lineTo(x - 18 - g * 6, y); c.moveTo(x - 10, y - 16); c.lineTo(x - 6 + g * 6, y);
+        c.moveTo(x + 12, y - 16); c.lineTo(x + 16 + g * 6, y); c.moveTo(x + 17, y - 16); c.lineTo(x + 20 - g * 6, y); c.stroke();
+        soul(c, x + 18, y - 26, 26, { la: 1.6, ra: 2.0, col: "#0d0303" });
+        c.lineWidth = 1.5; c.beginPath(); c.arc(x + 30, y - 46, 9, -1.2, 1.2); c.stroke();
+        const ap = (t * 0.9 + i * 0.3) % 1;
+        if (ap < 0.6) { const ax = x + 30 + ap * 160, ay = y - 46 - Math.sin(ap / 0.6 * Math.PI) * 30 + ap * 60; c.strokeStyle = "#e0b090"; c.lineWidth = 1.2; c.beginPath(); c.moveTo(ax, ay); c.lineTo(ax - 12, ay - 2); c.stroke(); }
+      }
+      // гарпии в лесу
+      for (const h of this.harp) {
+        const x = W * 0.38 + (Math.sin(t * 0.13 + h.ph) * 0.5 + 0.5) * W * 0.25, y = 90 + Math.sin(t * 0.7 + h.ph * 3) * 40;
+        const fl = Math.sin(t * 7 + h.ph);
+        c.fillStyle = "#050101";
+        c.beginPath(); c.moveTo(x, y); c.lineTo(x - 26, y - 10 + fl * 12); c.lineTo(x - 8, y + 5); c.lineTo(x + 8, y + 5); c.lineTo(x + 26, y - 10 + fl * 12); c.fill();
+        c.beginPath(); c.arc(x, y - 5, 4, 0, TAU); c.fill();
+      }
+      // кровь с обломанных ветвей
+      for (let i = 0; i < 8; i++) {
+        const tr = this.trees[i % this.trees.length], p = (t * 0.3 + i * 0.27) % 1;
+        c.fillStyle = `rgba(200,20,20,${0.8 * (1 - p)})`;
+        c.beginPath(); c.arc(tr.x + 10 - (i % 3) * 8, 220 + p * 90, 2, 0, TAU); c.fill();
+      }
+      // моты бегут от чёрных сук
+      const rp = (t / 22) % 1;
+      if (rp < 0.6) {
+        const x = W * 0.36 + (rp / 0.6) * W * 0.3, run = Math.sin(t * 14);
+        soul(c, x, 318, 30, { lean: 6, la: 1.4 + run, ra: -0.6 - run, ll: -0.7 * run, rl: 0.7 * run, col: "rgba(240,200,180,0.9)" });
+        for (let j = 0; j < 3; j++) {
+          const dx = x - 50 - j * 26, g = Math.sin(t * 16 + j);
+          c.fillStyle = "#000"; c.beginPath(); c.ellipse(dx, 306, 14, 6, 0.1, 0, TAU); c.fill();
+          c.beginPath(); c.ellipse(dx + 15, 302, 7, 5, 0, 0, TAU); c.fill();
+          c.strokeStyle = "#000"; c.lineWidth = 2.5; c.beginPath(); c.moveTo(dx - 8, 309); c.lineTo(dx - 10 - g * 4, 320); c.moveTo(dx + 8, 309); c.lineTo(dx + 10 + g * 4, 320); c.stroke();
+        }
+      }
+      // огненный песок: богохульники лежат, ростовщики сидят, содомиты бегут
+      for (const s of this.sand) {
+        const sh = Math.sin(t * 4 + s.ph) * 0.3;
+        if (s.type === 0) soul(c, s.x, s.y, 26, { rot: -Math.PI / 2, la: Math.PI - 0.5 + sh, ra: Math.PI + 0.3, col: "rgba(255,210,170,0.8)" });
+        else if (s.type === 1) soul(c, s.x, s.y, 24, { ll: -1.3, rl: -1.1, lb: 2.2, rb: 2.3, la: 0.8 + sh, ra: -0.6 - sh, col: "rgba(255,210,170,0.8)" });
+        else { const x = W * 0.67 + ((s.x - W * 0.67 + t * 35) % (W * 0.32)); const run = Math.sin(t * 12 + s.ph); soul(c, x, s.y, 26, { lean: 5, la: 1.3 + run, ra: -0.7 - run, ll: -0.7 * run, rl: 0.7 * run, col: "rgba(255,210,170,0.8)" }); }
+      }
+      for (const f of this.flakes) {
+        const y = ((f.y + t * f.sp) % 1) * (VH + 20) - 10, x = f.x + Math.sin(t * 0.8 + f.ph) * 8;
+        glowDot(c, x, y, 7, "rgba(255,170,60,0.55)");
+        c.fillStyle = "#ffe0a0"; c.fillRect(x - 1, y - 1, 2.4, 2.4);
+      }
+    },
+  });
+
+  // ---------- VIII. ЗЛЫЕ ЩЕЛИ ----------
+  const BOLGE = ["сводники", "льстецы", "симонисты", "прорицатели", "мздоимцы", "лицемеры", "воры", "лукавые советчики", "зачинщики раздора", "поддельщики"];
+  CIRCLES.push({
+    num: "VIII", it: "MALEBOLGE", ru: "Обман · Злые Щели", who: "десять рвов: от сводников до фальшивомонетчиков", canto: "Песни XVIII–XXX",
+    q: "Luogo è in inferno detto Malebolge", qru: "есть место в аду, зовущееся Злые Щели", accent: "#b46bff", ground: 118,
+    init(r, W) { this.bw = W / 10; this.seed = Array.from({ length: 60 }, () => r()); },
+    bridgeY(x) { const bw = this.bw, f = ((x % bw) + bw) % bw / bw; return 128 - Math.sin(f * Math.PI) * 22; },
+    path(p, W) { const x = -60 + p * (W + 120); return { x, y: this.bridgeY(x) }; },
+    bg(c, W) {
+      vgrad(c, W, VH, [[0, "#09040e"], [0.5, "#170a22"], [1, "#0c0612"]]);
+      const bw = this.bw;
+      for (let i = 0; i < 10; i++) {
+        const x0 = i * bw;
+        // ров
+        const g = c.createLinearGradient(0, 140, 0, VH);
+        g.addColorStop(0, "#1c1026"); g.addColorStop(1, "#06030a");
+        c.fillStyle = g;
+        c.beginPath(); c.moveTo(x0 + 6, 140); c.lineTo(x0 + 16, 340); c.lineTo(x0 + bw - 16, 340); c.lineTo(x0 + bw - 6, 140); c.fill();
+        // каменная перемычка между рвами
+        c.fillStyle = "#2a1c36"; c.fillRect(x0 - 6, 128, 12, VH);
+        // мост-арка
+        c.strokeStyle = "#5a4470"; c.lineWidth = 7;
+        c.beginPath();
+        for (let k = 0; k <= 20; k++) { const x = x0 + (k / 20) * bw; const y = 128 - Math.sin((k / 20) * Math.PI) * 22; k ? c.lineTo(x, y) : c.moveTo(x, y); }
+        c.stroke();
+        c.strokeStyle = "#2c1f3a"; c.lineWidth = 3; c.stroke();
+        c.fillStyle = "rgba(200,170,230,0.55)"; c.font = "11px Georgia, serif"; c.textAlign = "center";
+        c.fillText(String(i + 1), x0 + bw / 2, 96);
+      }
+    },
+    draw(c, t, W) {
+      const bw = this.bw, Y = 330;
+      for (let i = 0; i < 10; i++) {
+        const x0 = i * bw, cx = x0 + bw / 2;
+        c.save(); c.beginPath(); c.moveTo(x0 + 6, 140); c.lineTo(x0 + 16, 340); c.lineTo(x0 + bw - 16, 340); c.lineTo(x0 + bw - 6, 140); c.clip();
+        const col = "rgba(225,210,240,0.8)";
+        if (i === 0) { // сводники, бегут двумя потоками, бес с бичом
+          for (let j = 0; j < 6; j++) {
+            const d = j % 2 ? 1 : -1, x = x0 + ((j * 37 + d * t * 22) % bw + bw) % bw, run = Math.sin(t * 10 + j);
+            soul(c, x, Y - (j % 2) * 14, 24, { lean: d * 4, ll: run * 0.6, rl: -run * 0.6, la: -run, ra: run, col });
+          }
+          const w = Math.sin(t * 3);
+          soul(c, cx, 230, 34, { ra: 2 + w, col: "#1a0d22" });
+          c.strokeStyle = "#ffcf9a"; c.lineWidth = 1.2; c.beginPath(); c.moveTo(cx + 6, 205); c.quadraticCurveTo(cx + 26, 200 + w * 30, cx + 10 + w * 20, 260); c.stroke();
+          c.fillStyle = "#1a0d22"; c.beginPath(); c.moveTo(cx - 3, 192); c.lineTo(cx - 6, 182); c.lineTo(cx - 1, 190); c.moveTo(cx + 3, 192); c.lineTo(cx + 6, 182); c.lineTo(cx + 1, 190); c.fill();
+        } else if (i === 1) { // льстецы в нечистотах
+          c.fillStyle = "#3a2a10"; c.fillRect(x0, 280, bw, 80);
+          for (let j = 0; j < 6; j++) { const x = x0 + 22 + j * (bw - 40) / 5, b = Math.sin(t * 1.4 + j) * 3; c.fillStyle = "rgba(220,200,180,0.8)"; c.beginPath(); c.arc(x, 282 + b, 4.5, 0, TAU); c.fill(); c.strokeStyle = "rgba(220,200,180,0.8)"; c.lineWidth = 2; c.beginPath(); c.moveTo(x - 4, 286 + b); c.lineTo(x - 9, 274 + b + Math.sin(t * 3 + j) * 4); c.stroke(); }
+        } else if (i === 2) { // симонисты вниз головой, пятки горят
+          for (let j = 0; j < 4; j++) {
+            const x = x0 + 26 + j * (bw - 52) / 3, k = Math.sin(t * 5 + j * 2) * 0.35;
+            c.fillStyle = "#000"; c.beginPath(); c.ellipse(x, Y, 11, 4, 0, 0, TAU); c.fill();
+            c.strokeStyle = col; c.lineWidth = 3; c.lineCap = "round";
+            c.beginPath(); c.moveTo(x - 2, Y); c.lineTo(x - 6 + k * 10, Y - 26); c.moveTo(x + 2, Y); c.lineTo(x + 6 - k * 10, Y - 26); c.stroke();
+            flame(c, x - 6 + k * 10, Y - 26, 6, 14, t, j, 0.9); flame(c, x + 6 - k * 10, Y - 26, 6, 14, t, j + 5, 0.9);
+          }
+        } else if (i === 3) { // прорицатели: голова свёрнута назад, идут пятясь
+          for (let j = 0; j < 4; j++) { const x = x0 + ((j * 45 + t * 6) % bw), wk = Math.sin(t * 2 + j) * 0.2; soul(c, x, Y - (j % 2) * 10, 30, { hx: -3.5, la: 0.2, ra: -0.2, ll: wk, rl: -wk, col }); c.fillStyle = "rgba(160,200,255,0.8)"; c.fillRect(x - 5, Y - 34 + ((t * 20 + j * 7) % 14), 1.5, 3); }
+        } else if (i === 4) { // кипящая смола и бесы с крючьями
+          c.fillStyle = "#050305"; c.fillRect(x0, 270, bw, 90);
+          for (let j = 0; j < 7; j++) { const p = (t * 0.4 + j * 0.15) % 1; c.strokeStyle = `rgba(120,100,130,${0.6 * (1 - p)})`; c.beginPath(); c.arc(x0 + 15 + j * 26 % bw, 274, 2 + p * 5, Math.PI, 0); c.stroke(); }
+          const up = Math.max(0, Math.sin(t * 0.9)), sx = x0 + bw * 0.4;
+          c.fillStyle = "rgba(220,200,180,0.85)"; c.beginPath(); c.arc(sx, 276 - up * 8, 5, 0, TAU); c.fill();
+          soul(c, x0 + bw * 0.75, 270, 36, { ra: 2.6 - up * 0.8, la: -0.3, col: "#20102a" });
+          c.strokeStyle = "#a08890"; c.lineWidth = 1.8; c.beginPath(); c.moveTo(x0 + bw * 0.75 + 4, 238); c.lineTo(sx + 10, 262 - up * 8); c.lineTo(sx + 4, 266 - up * 8); c.stroke();
+        } else if (i === 5) { // лицемеры в позолоченных свинцовых плащах + распятый Каиафа
+          c.strokeStyle = "rgba(230,210,200,0.8)"; c.lineWidth = 2; c.beginPath(); c.moveTo(x0 + 20, Y + 4); c.lineTo(x0 + bw - 20, Y + 4); c.moveTo(cx, Y - 4); c.lineTo(cx, Y + 10); c.stroke();
+          for (let j = 0; j < 4; j++) {
+            const x = x0 + ((j * 48 + t * 3) % bw), y = Y - 6 - (j % 2) * 8;
+            const g = c.createLinearGradient(x - 10, y - 40, x + 10, y);
+            g.addColorStop(0, "#fff0a0"); g.addColorStop(0.5, "#c89a30"); g.addColorStop(1, "#5a3e10");
+            c.fillStyle = g; c.beginPath(); c.moveTo(x, y - 40); c.quadraticCurveTo(x + 13, y - 30, x + 12, y); c.lineTo(x - 12, y); c.quadraticCurveTo(x - 13, y - 30, x, y - 40); c.fill();
+          }
+        } else if (i === 6) { // воры и змеи
+          for (let j = 0; j < 3; j++) {
+            const x = x0 + 30 + j * (bw - 60) / 2, ash = ((t / 9 + j * 0.33) % 1);
+            if (j === 1 && ash > 0.85) { // Ванни Фуччи вспыхивает и рассыпается пеплом
+              const a = (ash - 0.85) / 0.15; glowDot(c, x, Y - 18, 30, `rgba(255,160,60,${1 - a})`);
+              for (let k = 0; k < 12; k++) { c.fillStyle = `rgba(150,140,140,${1 - a})`; c.fillRect(x + Math.sin(k) * a * 20, Y - 30 + a * 30 + k, 2, 2); }
+              continue;
+            }
+            soul(c, x, Y, 32, { la: 2.3 + Math.sin(t * 4 + j) * 0.4, ra: -2.2, col });
+            c.strokeStyle = "#3bd16a"; c.lineWidth = 2.2; c.beginPath();
+            for (let k = 0; k <= 16; k++) { const a = k / 16 * TAU * 2 + t * 3; const xx = x + Math.cos(a) * 7, yy = Y - 4 - k * 1.9; k ? c.lineTo(xx, yy) : c.moveTo(xx, yy); }
+            c.stroke();
+          }
+        } else if (i === 7) { // огненные языки; раздвоенный — Улисс и Диомед
+          for (let j = 0; j < 4; j++) {
+            const x = x0 + ((j * 47 + t * 9) % bw), y = Y - 10 - (j % 2) * 30;
+            flame(c, x, y, 18, 50, t, j * 3 + 1, 0.9);
+            if (j === 0) flame(c, x + 12, y, 14, 42, t, 9, 0.9);
+          }
+        } else if (i === 8) { // зачинщики раздора: бес с мечом, Бертран несёт свою голову
+          const ex = x0 + bw * 0.25;
+          soul(c, ex, Y - 8, 40, { ra: 2.2 + Math.sin(t * 2) * 1.2, col: "#1d0d26" });
+          c.strokeStyle = "#ddd"; c.lineWidth = 1.6; const sa = 2.2 + Math.sin(t * 2) * 1.2;
+          c.beginPath(); c.moveTo(ex + Math.sin(sa) * 12, Y - 38 + Math.cos(sa) * 12); c.lineTo(ex + Math.sin(sa) * 34, Y - 38 + Math.cos(sa) * 34); c.stroke();
+          for (let j = 0; j < 3; j++) { const x = x0 + ((j * 60 + t * 10) % bw); soul(c, x, Y, 30, { col, head: j !== 1, la: j === 1 ? 1.6 : 0.3 }); if (j === 1) { c.fillStyle = col; c.beginPath(); c.arc(x + 11, Y - 26, 4, 0, TAU); c.fill(); } c.strokeStyle = "rgba(200,30,30,0.9)"; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x, Y - 30); c.lineTo(x, Y - 18); c.stroke(); }
+        } else { // поддельщики: прокажённые лежат и чешутся, двое бешеных кусают
+          for (let j = 0; j < 5; j++) soul(c, x0 + 20 + j * 30, Y - (j % 2) * 4, 24, { rot: j % 2 ? 1.5 : -1.5, la: Math.PI - 0.4 + Math.sin(t * 9 + j) * 0.4, col: "rgba(190,200,150,0.8)" });
+          const x = x0 + ((t * 28) % bw), run = Math.sin(t * 13);
+          soul(c, x, Y - 18, 28, { lean: 6, ll: run * 0.7, rl: -run * 0.7, la: 1.5, ra: 1.3, col });
+          soul(c, x + 18, Y - 18, 28, { lean: 6, ll: -run * 0.7, rl: run * 0.7, la: 1.7, ra: 1.5, hx: 3, col: "rgba(255,190,190,0.85)" });
+        }
+        c.restore();
+        c.fillStyle = "rgba(200,170,230,0.55)"; c.font = "italic 10px Georgia, serif"; c.textAlign = "center";
+        c.fillText(BOLGE[i], cx, 350);
+      }
+    },
+  });
+
+  // ---------- IX. ПРЕДАТЕЛЬСТВО ----------
+  CIRCLES.push({
+    num: "IX", it: "TRADIMENTO", ru: "Предательство", who: "вмёрзли в озеро Коцит; в центре — Люцифер", canto: "Песни XXXI–XXXIV",
+    q: "Lo 'mperador del doloroso regno", qru: "владыка скорбного царства", accent: "#8fdcff", ground: 252,
+    init(r, W) {
+      this.heads = Array.from({ length: 34 }, () => ({ x: r() * W * 0.62, y: 258 + r() * 70, tilt: r() < 0.5 ? 1 : -1, ph: r() * TAU }));
+      this.inice = Array.from({ length: 16 }, () => ({ x: r() * W * 0.7, y: 290 + r() * 60, a: r() * TAU }));
+      this.wind = Array.from({ length: 120 }, () => ({ x: r(), y: r(), k: r() }));
+    },
+    bg(c, W) {
+      vgrad(c, W, VH, [[0, "#02060c"], [0.6, "#0a1826"], [1, "#0e2230"]]);
+      // великаны у колодца — как башни
+      for (const [x, h] of [[0.06, 210], [0.17, 180], [0.28, 200]]) {
+        c.fillStyle = "#061019";
+        const X = W * x;
+        c.beginPath(); c.moveTo(X - 34, 260); c.lineTo(X - 28, 260 - h + 40); c.quadraticCurveTo(X, 260 - h, X + 28, 260 - h + 40); c.lineTo(X + 34, 260); c.fill();
+        c.beginPath(); c.arc(X, 260 - h + 12, 18, 0, TAU); c.fill();
+      }
+      // лёд
+      const g = c.createLinearGradient(0, 250, 0, VH);
+      g.addColorStop(0, "#9ccbe0"); g.addColorStop(0.06, "#4a7d98"); g.addColorStop(1, "#16324a");
+      c.fillStyle = g; c.fillRect(0, 252, W, VH);
+      const r = rngf(91);
+      c.strokeStyle = "rgba(200,235,255,0.25)"; c.lineWidth = 1;
+      for (let i = 0; i < 40; i++) { let x = r() * W, y = 256 + r() * 100; c.beginPath(); c.moveTo(x, y); for (let k = 0; k < 5; k++) { x += (r() - 0.5) * 50; y += (r() - 0.3) * 12; c.lineTo(x, y); } c.stroke(); }
+    },
+    lucifer(c, x, t) {
+      const flap = Math.sin(t * 0.9);
+      c.save(); c.translate(x, 0);
+      // шесть крыльев (по три пары видно как три слоя)
+      for (let layer = 0; layer < 3; layer++) {
+        const sp = 1 - layer * 0.18, yy = 120 + layer * 22, fl = flap * (0.25 + layer * 0.05);
+        c.fillStyle = ["#0b1018", "#0e141e", "#121a26"][layer];
+        for (const s of [-1, 1]) {
+          c.beginPath(); c.moveTo(0, yy);
+          const tipx = s * 260 * sp, tipy = yy - 90 * sp - fl * 90;
+          c.quadraticCurveTo(s * 110 * sp, yy - 120 * sp - fl * 50, tipx, tipy);
+          for (let k = 1; k <= 4; k++) { const fx = s * (260 - k * 52) * sp, fy = yy + 30 + fl * 30 * (1 - k / 5); c.quadraticCurveTo(fx + s * 26 * sp, fy - 46, fx, fy); }
+          c.closePath(); c.fill();
+        }
+      }
+      // торс по грудь во льду
+      c.fillStyle = "#151c28"; c.beginPath(); c.moveTo(-70, 262); c.quadraticCurveTo(-80, 150, -40, 110); c.lineTo(40, 110); c.quadraticCurveTo(80, 150, 70, 262); c.fill();
+      // три лица: красное, жёлто-белое, чёрное
+      const faces = [[-34, "#3a3a2a", "#d8cf9a"], [0, "#5a0c0c", "#ff2a1a"], [34, "#0a0a0c", "#555"]];
+      for (const [fx, col, eye] of faces) {
+        c.fillStyle = col; c.beginPath(); c.ellipse(fx, 92, 19, 24, 0, 0, TAU); c.fill();
+        c.fillStyle = eye; c.fillRect(fx - 9, 84, 5, 3); c.fillRect(fx + 4, 84, 5, 3);
+        c.fillStyle = "rgba(160,220,255,0.7)"; c.fillRect(fx - 7, 88 + ((t * 12 + fx) % 30 + 30) % 30, 1.5, 4); // слёзы
+        const chew = Math.abs(Math.sin(t * 2.2 + fx));
+        c.fillStyle = "#000"; c.beginPath(); c.ellipse(fx, 104, 9, 3 + chew * 5, 0, 0, TAU); c.fill();
+      }
+      // рога
+      c.fillStyle = "#0d0f14";
+      c.beginPath(); c.moveTo(-14, 72); c.lineTo(-24, 40); c.lineTo(-4, 70); c.moveTo(14, 72); c.lineTo(24, 40); c.lineTo(4, 70); c.fill();
+      // Иуда — ноги дёргаются из средней пасти; Брут и Кассий — из боковых
+      const k = Math.sin(t * 4) * 0.5;
+      c.strokeStyle = "rgba(230,215,200,0.9)"; c.lineWidth = 3; c.lineCap = "round";
+      c.beginPath(); c.moveTo(-3, 104); c.lineTo(-8 - k * 8, 130); c.moveTo(3, 104); c.lineTo(8 + k * 8, 132); c.stroke();
+      c.lineWidth = 2.5;
+      c.beginPath(); c.moveTo(-34, 106); c.lineTo(-48, 124 + k * 6); c.moveTo(34, 106); c.lineTo(48, 124 - k * 6); c.stroke();
+      c.restore();
+    },
+    path(p, W) { const x = -60 + p * (W * 0.78); return { x: Math.min(x, W * 0.74), y: 256 }; },
+    draw(c, t, W) {
+      // вмёрзшие целиком (Джудекка) — «как соломинка в стекле»
+      for (const s of this.inice) soul(c, s.x, s.y, 30, { rot: s.a, la: 2.5, ra: -1, col: "rgba(200,230,255,0.25)" });
+      // головы над льдом; у Птоломеи лица запрокинуты, слёзы замерзают
+      for (const h of this.heads) {
+        const sh = Math.sin(t * 6 + h.ph) * 0.7;  // стучат зубами
+        c.fillStyle = "rgba(225,235,245,0.9)";
+        c.beginPath(); c.arc(h.x + sh, h.y - 4, 4.6, 0, TAU); c.fill();
+        c.fillStyle = "rgba(170,230,255,0.9)";
+        if (h.tilt > 0) c.fillRect(h.x - 2 + sh, h.y - 7, 4, 1.6);
+      }
+      // Уголино грызёт голову Руджери
+      const ux = W * 0.42, g = Math.abs(Math.sin(t * 2.4)) * 3;
+      c.fillStyle = "rgba(235,225,215,0.95)";
+      c.beginPath(); c.arc(ux, 270, 6, 0, TAU); c.fill();
+      c.beginPath(); c.arc(ux + 9 - g, 262 + g * 0.3, 6, 0, TAU); c.fill();
+      c.fillStyle = "rgba(200,30,30,0.8)"; c.fillRect(ux + 3, 267, 3, 2 + g);
+      // Люцифер и ветер от его крыльев
+      this.lucifer(c, W * 0.86, t);
+      const ig = c.createLinearGradient(0, 248, 0, 275);
+      ig.addColorStop(0, "rgba(170,215,235,0.95)"); ig.addColorStop(1, "rgba(60,110,140,0)");
+      c.fillStyle = ig; c.beginPath(); c.ellipse(W * 0.86, 258, 110, 14, 0, 0, TAU); c.fill();
+      c.strokeStyle = "rgba(200,235,255,0.22)"; c.lineWidth = 1;
+      c.beginPath();
+      for (const w of this.wind) {
+        const x = W - ((w.x + t * (0.12 + w.k * 0.1)) % 1) * W, y = w.y * 250 + 10 + Math.sin(t + w.k * 9) * 6;
+        c.moveTo(x, y); c.lineTo(x + 20 + w.k * 30, y);
+      }
+      c.stroke();
+    },
+  });
+
+  // ======================================================================
+  //                              Д В И Ж О К
+  // ======================================================================
+  const cv = document.getElementById("inferno");
+  const ctx = cv.getContext("2d");
+  let DPR = 1, CW = 0, CH = 0;
+  let panels = [];   // {x, y, w, h, group}
+  let bands = [];    // кэш фонов
+  let mode = String(cfg.screen);
+
+  function layout() {
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    CW = window.innerWidth; CH = window.innerHeight;
+    cv.width = Math.round(CW * DPR); cv.height = Math.round(CH * DPR);
+    cv.style.width = CW + "px"; cv.style.height = CH + "px";
+    panels = [];
+    const wide = mode === "all" || (mode === "auto" && CW / CH > 4);
+    if (wide) for (let g = 0; g < 3; g++) panels.push({ x: (CW / 3) * g, y: 0, w: CW / 3, h: CH, group: g });
+    else panels.push({ x: 0, y: 0, w: CW, h: CH, group: mode === "auto" ? -1 : clamp((+mode || 1) - 1, 0, 2) });
+    bands = [];
+    const bandH = CH / 3, s = bandH / VH, VW = Math.ceil(panels[0].w / s);
+    CIRCLES.forEach((ci, i) => {
+      ci.init(rngf(1000 + i * 77), VW);
+      const off = document.createElement("canvas");
+      off.width = Math.ceil(VW * s * DPR); off.height = Math.ceil(VH * s * DPR);
+      const oc = off.getContext("2d");
+      oc.scale(s * DPR, s * DPR);
+      ci.bg(oc, VW);
+      bands[i] = { off, VW, s };
+    });
+  }
+
+  function clock() {
+    const now = cfg.t !== undefined ? +cfg.t + (performance.now() / 1000) : Date.now() / 1000;
+    const p = ((now % cfg.cycle) + cfg.cycle) % cfg.cycle;
+    const seg = (cfg.cycle - OUTRO) / 9;
+    const ci = Math.min(8, Math.floor(p / seg));
+    const prog = p < cfg.cycle - OUTRO ? (p - ci * seg) / seg : 1;
+    const outro = p >= cfg.cycle - OUTRO ? (p - (cfg.cycle - OUTRO)) / OUTRO : -1;
+    return { now, p, ci, prog, outro, seg };
+  }
+
+  function drawPilgrims(c, ci, prog, t, VW) {
+    const scene = CIRCLES[ci];
+    const pos = scene.path ? scene.path(prog, VW) : { x: -60 + prog * (VW + 120), y: scene.ground };
+    const ph = t * 6;
+    if (pos.boat) {
+      CIRCLES[4].boat(c, pos.x, pos.y + 2, t);
+      pilgrim(c, pos.x - 4, pos.y - 4, 42, 0, "virgil");
+      pilgrim(c, pos.x - 30, pos.y - 4, 42, 0, "dante");
+      return;
+    }
+    pilgrim(c, pos.x, pos.y, 44, ph, "virgil");
+    pilgrim(c, pos.x - 30, pos.y, 44, ph + 1.3, "dante");
+  }
+
+  function label(c, ci, VW, active, a) {
+    if (!cfg.labels) return;
+    const C = CIRCLES[ci];
+    c.save();
+    c.globalAlpha = a;
+    const g = c.createLinearGradient(0, 0, 420, 0);
+    g.addColorStop(0, "rgba(0,0,0,0.55)"); g.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = g; c.fillRect(0, 8, 460, 70);
+    c.textAlign = "left"; c.textBaseline = "alphabetic";
+    c.fillStyle = C.accent; c.font = "600 34px 'Cormorant Garamond', Georgia, serif";
+    c.shadowColor = C.accent; c.shadowBlur = active ? 14 : 4;
+    c.fillText(C.num, 26, 50);
+    const nw = c.measureText(C.num).width;
+    c.shadowBlur = 0;
+    c.fillStyle = "rgba(240,228,215,0.95)"; c.font = "600 19px 'Cormorant Garamond', Georgia, serif";
+    c.fillText(C.it.split("").join(" ") + "  ·  " + C.ru, 38 + nw, 38);
+    c.fillStyle = "rgba(210,195,185,0.75)"; c.font = "italic 14px 'Cormorant Garamond', Georgia, serif";
+    c.fillText(C.who + "  —  " + C.canto, 38 + nw, 58);
+    c.restore();
+  }
+
+  function quote(c, ci, VW, prog) {
+    const C = CIRCLES[ci];
+    const a = smooth(clamp(prog * 8, 0, 1)) * smooth(clamp((1 - prog) * 8, 0, 1));
+    if (a <= 0) return;
+    c.save(); c.globalAlpha = a; c.textAlign = "right";
+    c.fillStyle = "rgba(255,240,220,0.95)"; c.font = "italic 20px 'Cormorant Garamond', Georgia, serif";
+    c.shadowColor = "rgba(0,0,0,0.9)"; c.shadowBlur = 6;
+    c.fillText("«" + C.q + "»", VW - 28, 36);
+    c.fillStyle = "rgba(220,200,190,0.8)"; c.font = "14px 'Cormorant Garamond', Georgia, serif";
+    c.fillText(C.qru, VW - 28, 56);
+    // прогресс поэтов по кругу
+    c.fillStyle = "rgba(255,255,255,0.12)"; c.fillRect(VW - 228, 66, 200, 2);
+    c.fillStyle = C.accent; c.fillRect(VW - 228, 66, 200 * prog, 2);
+    c.restore();
+  }
+
+  // мини-карта воронки: где сейчас поэты
+  function minimap(c, x, y, ci, group, outro) {
+    c.save(); c.translate(x, y);
+    for (let i = 0; i < 9; i++) {
+      const w = 92 - i * 9, yy = i * 9;
+      const on = i === ci && outro < 0;
+      const mine = Math.floor(i / 3) === group;
+      c.strokeStyle = on ? CIRCLES[i].accent : mine ? "rgba(240,220,200,0.55)" : "rgba(240,220,200,0.18)";
+      c.lineWidth = on ? 3 : 1.4;
+      c.beginPath(); c.ellipse(0, yy, w / 2, 3.2, 0, 0, TAU); c.stroke();
+      if (on) { c.fillStyle = CIRCLES[i].accent; c.font = "11px Georgia, serif"; c.textAlign = "left"; c.fillText(CIRCLES[i].num, w / 2 + 6, yy + 4); }
+    }
+    c.restore();
+  }
+
+  let last = 0;
+  function frame(ts) {
+    requestAnimationFrame(frame);
+    if (ts - last < 1000 / cfg.fps - 2) return;
+    last = ts;
+    const { now, ci, prog, outro } = clock();
+    const t = now % 10000;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, cv.width, cv.height);
+    for (const P of panels) {
+      const group = P.group >= 0 ? P.group : Math.floor(ci / 3);
+      for (let b = 0; b < 3; b++) {
+        const idx = group * 3 + b, B = bands[idx], C = CIRCLES[idx];
+        const by = P.y + (P.h / 3) * b;
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        ctx.save();
+        ctx.beginPath(); ctx.rect(P.x, by, P.w, P.h / 3); ctx.clip();
+        ctx.drawImage(B.off, P.x, by, P.w, P.h / 3);
+        ctx.translate(P.x, by); ctx.scale(B.s, B.s);
+        C.draw(ctx, t, B.VW, idx === ci && outro < 0);
+        const active = idx === ci && outro < 0;
+        if (active) drawPilgrims(ctx, idx, prog, t, B.VW);
+        // неактивные круги чуть притушены, активный — в фокусе
+        ctx.fillStyle = active ? "rgba(0,0,0,0)" : "rgba(0,0,0,0.28)";
+        ctx.fillRect(0, 0, B.VW, VH);
+        label(ctx, idx, B.VW, active, active ? 1 : 0.75);
+        if (active) quote(ctx, idx, B.VW, prog);
+        // скальный карниз между кругами
+        const lg = ctx.createLinearGradient(0, VH - 8, 0, VH);
+        lg.addColorStop(0, "rgba(0,0,0,0)"); lg.addColorStop(1, "rgba(0,0,0,0.9)");
+        ctx.fillStyle = lg; ctx.fillRect(0, VH - 8, B.VW, 8);
+        if (active) { ctx.strokeStyle = C.accent; ctx.globalAlpha = 0.5; ctx.lineWidth = 2; ctx.strokeRect(1, 1, B.VW - 2, VH - 2); ctx.globalAlpha = 1; }
+        ctx.restore();
+      }
+      if (cfg.labels) {
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        const s = (P.h / 3) / VH;
+        ctx.save(); ctx.translate(P.x + P.w - 80 * s, P.y + P.h - 110 * s); ctx.scale(s, s);
+        ctx.globalAlpha = 0.85; minimap(ctx, 0, 0, ci, group, outro); ctx.restore();
+      }
+      if (outro >= 0) drawOutro(P, outro, t);
+    }
+  }
+
+  function drawOutro(P, o, t) {
+    const a = smooth(clamp(o * 4, 0, 1)) * smooth(clamp((1 - o) * 3, 0, 1));
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.save(); ctx.beginPath(); ctx.rect(P.x, P.y, P.w, P.h); ctx.clip();
+    ctx.globalAlpha = a;
+    const g = ctx.createRadialGradient(P.x + P.w / 2, P.y + P.h / 2, 0, P.x + P.w / 2, P.y + P.h / 2, P.w * 0.7);
+    g.addColorStop(0, "#0c1630"); g.addColorStop(1, "#02040a");
+    ctx.fillStyle = g; ctx.fillRect(P.x, P.y, P.w, P.h);
+    const r = rngf(5 + P.group);
+    for (let i = 0; i < 500; i++) {
+      const x = P.x + r() * P.w, y = P.y + r() * P.h, s = r() * r() * 2.2, tw = 0.5 + 0.5 * Math.sin(t * 2 + i);
+      ctx.fillStyle = `rgba(255,250,235,${0.3 + 0.7 * tw * r()})`; ctx.fillRect(x, y, s + 0.6, s + 0.6);
+    }
+    if (P.group === 1 || P.group === -1 || panels.length === 1) {
+      // четыре звезды Чистилища
+      for (const [sx, sy] of [[-40, -60], [10, 40], [-60, 0], [40, -16]]) {
+        const x = P.x + P.w / 2 + sx, y = P.y + P.h * 0.38 + sy;
+        const gg = ctx.createRadialGradient(x, y, 0, x, y, 26); gg.addColorStop(0, "rgba(255,255,240,1)"); gg.addColorStop(1, "rgba(255,255,240,0)");
+        ctx.fillStyle = gg; ctx.fillRect(x - 26, y - 26, 52, 52);
+      }
+      const fs = Math.max(22, P.h / 26);
+      ctx.textAlign = "center"; ctx.fillStyle = "rgba(240,240,255,0.95)";
+      ctx.font = `italic ${fs}px 'Cormorant Garamond', Georgia, serif`;
+      ctx.fillText("e quindi uscimmo a riveder le stelle", P.x + P.w / 2, P.y + P.h * 0.62);
+      ctx.fillStyle = "rgba(200,210,230,0.8)"; ctx.font = `${fs * 0.6}px 'Cormorant Garamond', Georgia, serif`;
+      ctx.fillText("И здесь мы вышли вновь узреть светила.", P.x + P.w / 2, P.y + P.h * 0.62 + fs * 1.3);
+    }
+    ctx.restore();
+  }
+
+  // Lively: livelyPropertyListener; Wallpaper Engine: wallpaperPropertyListener
+  function setProp(name, val) {
+    if (name === "screen") { mode = typeof val === "number" ? ["1", "2", "3", "all", "auto"][val] || "auto" : String(val); layout(); }
+    if (name === "cycle") cfg.cycle = Math.min(1200, Math.max(120, +val * 60 || 540));
+    if (name === "labels") cfg.labels = !!val;
+    if (name === "fps") cfg.fps = +val || 30;
+  }
+  window.livelyPropertyListener = setProp;
+  window.wallpaperPropertyListener = {
+    applyUserProperties(p) {
+      for (const k in p) if (p[k] && "value" in p[k]) setProp(k, p[k].value);
+    },
+  };
+
+  window.addEventListener("resize", layout);
+  layout();
+  requestAnimationFrame(frame);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => layout());
+})();
