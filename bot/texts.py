@@ -113,6 +113,24 @@ IMPORTANT_TEXT = """<b>⚠️ ВАЖНО!</b>
 """
 IMPORTANT_KEYBOARD = [[('🎰 Лицензионное казино', 'web_app', 'https://officialvitussbotspace.framer.website/отдельный-поиск')], [('💎 Как депать с крипты', 'web_app', 'https://officialvitussbotspace.framer.website/как-депать-с-крипты-2')], [('🎁 Как использовать промокод', 'web_app', 'https://officialvitussbotspace.framer.website/как-испольщовать-промокод')], [('✅СПРАВОЧНИК ИГРОКА', 'web_app', 'https://officialvitussbotspace.framer.website')]]
 
+# Анонс стрима (рассылка «Стрим начался», «Стрим → в канал» и автопересылка «как стрим»)
+STREAM_CAPTION = """<b>Погнали! Стрим уже идёт</b>👇 📱🔴https://kick.com/vituss
+
+📌 <b>Актуальные зеркала казино:</b> https://t.me/vituss2/644"""
+STREAM_KEYBOARD = [[("🔥СМОТРЕТЬ СТРИМ🔥", "url", "https://kick.com/vituss")]]
+
+# ---------- Автопересылка постов из канала Витуса (SOURCE_CHANNEL) в наш канал ----------
+# Из поста берутся первые строки автора (до служебного блока), к ним добавляется эта подпись.
+MOMENT_FOOTER = """<b>Заходи на стрим:</b> https://kick.com/vituss
+<b>Актуальные зеркала казино:</b> https://t.me/vituss2/644"""
+MOMENT_KEYBOARD = []  # кнопки под «моментами», если понадобятся: [[("Текст", "url", "https://...")]]
+
+# Строка поста, с которой начинается служебный блок Витуса (всё после неё отбрасывается).
+# Также отбрасывается всё, начиная с первой строки со ссылкой.
+BOILERPLATE_MARKERS = [
+    "стрим идёт тут", "стрим идет тут", "казино", "подпишитесь", "подпишись", "прочти, разберись", "____",
+]
+
 # Рассылки. key -> шаблон. target: "users" — вся база из таблицы, "channel" — PROMO_CHANNEL_ID
 BROADCASTS = {
     'wheel': {
@@ -155,19 +173,7 @@ BROADCASTS = {
         "title": '🔴 Стрим начался',
         "target": 'users',
         "photo": 'https://i.postimg.cc/VLx01QdJ/kreativ-strimy-2209.jpg',
-        "caption": """<b>Погнали! Стрим уже идёт</b>👇 📱🔴https://kick.com/vituss 
-
-📌 <b>Актуальные зеркала казино:</b> https://t.me/vituss2/644 
-
-━━━━━━━━━━━━━━━ 
-<b>Подпишись, чтобы ничего не пропустить:</b> 
-
-🚀<b>Telegram, медийный, без рекламы:</b> 
-https://t.me/vitussmain 
-📷 <b>Instagram:</b> https://www.instagram.com/vituskik 
-▶️ <b>YouTube:</b> https://vitussbritva.com/youtube 
-🟦 <b>ВК, музыка со стримов:</b> https://vk.com/vitussmain
-""",
+        "caption": STREAM_CAPTION,
         "keyboard": [[('🔥СМОТРЕТЬ СТРИМ🔥', 'url', 'https://kick.com/vituss')]],
     },
     'clip': {
@@ -229,19 +235,7 @@ ________________________________
         "title": '📣 Стрим → в канал',
         "target": 'channel',
         "photo": 'https://i.postimg.cc/VLx01QdJ/kreativ-strimy-2209.jpg',
-        "caption": """<b>Погнали! Стрим уже идёт</b>👇 📱🔴https://kick.com/vituss 
-
-📌 <b>Актуальные зеркала казино:</b> https://t.me/vituss2/644 
-
-━━━━━━━━━━━━━━━ 
-<b>Подпишись, чтобы ничего не пропустить:</b> 
-
-🚀<b>Telegram, медийный, без рекламы:</b> 
-https://t.me/vitussmain 
-📷 <b>Instagram:</b> https://www.instagram.com/vituskik 
-▶️ <b>YouTube:</b> https://vitussbritva.com/youtube 
-🟦 <b>ВК, музыка со стримов:</b> https://vk.com/vitussmain
-""",
+        "caption": STREAM_CAPTION,
         "keyboard": [[('🔥СМОТРЕТЬ СТРИМ🔥', 'url', 'https://kick.com/vituss')]],
     },
 }

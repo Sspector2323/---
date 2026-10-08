@@ -37,6 +37,8 @@ class Config:
     promo_channel_id: int = 0
     followup_delay: int = 10
     broadcast_delay: float = 0.05
+    source_channel: str = ""
+    repost_mode: str = "auto"
 
 
 def load_config() -> Config:
@@ -57,4 +59,6 @@ def load_config() -> Config:
         promo_channel_id=int(_env("PROMO_CHANNEL_ID", "-1001407379425")),
         followup_delay=int(_env("FOLLOWUP_DELAY", "10")),
         broadcast_delay=float(_env("BROADCAST_DELAY", "0.05")),
+        source_channel=_env("SOURCE_CHANNEL", "vtss2").strip().lstrip("@").lower(),
+        repost_mode=_env("REPOST_MODE", "auto").strip().lower(),
     )
