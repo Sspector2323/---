@@ -58,5 +58,8 @@ def template_sender(bot: Bot, key: str) -> Callable[[int], Awaitable[object]]:
     return lambda chat_id: send_post(bot, chat_id, tpl["photo"], tpl["caption"], keyboard)
 
 
-def copy_sender(bot: Bot, from_chat_id: int, message_id: int) -> Callable[[int], Awaitable[object]]:
-    return lambda chat_id: with_retry(lambda: bot.copy_message(chat_id, from_chat_id, message_id))
+def copy_sender(bot: Bot, from_chat_id: int, message_ids: list[int]) -> Callable[[int], Awaitable[object]]:
+    """Копия поста (одно сообщение или альбом) без пометки «переслано»."""
+    if len(message_ids) == 1:
+        return lambda chat_id: with_retry(lambda: bot.copy_message(chat_id, from_chat_id, message_ids[0]))
+    return lambda chat_id: with_retry(lambda: bot.copy_messages(chat_id, from_chat_id, message_ids))

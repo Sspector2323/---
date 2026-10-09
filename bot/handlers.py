@@ -7,6 +7,7 @@ Telegram Trigger → «только личка» → запись в «База 
 Плюс админ-команды для рассылок (вместо ручного запуска в n8n).
 """
 import asyncio
+import itertools
 import logging
 
 from aiogram import Bot, F, Router
@@ -28,11 +29,14 @@ GREETINGS = {"Привет"}
 
 ADMIN_HELP = (
     "<b>Админка бота</b>\n\n"
+    "Просто пришли мне пост (текст, фото, видео, альбом) — я спрошу, куда его отправить: "
+    "всей базе или в канал. ИИ тебе не отвечает.\n\n"
     "/broadcasts — готовые рассылки (колесо, стрим, итоги и т.д.)\n"
     "/send — ответь этой командой на любое сообщение (текст, фото, видео), "
     "и выбери: разослать копию всей базе или опубликовать в канал\n"
     "/stats — сколько людей в базе\n"
-    "/myid — твой Telegram ID\n\n"
+    "/myid — твой Telegram ID\n"
+    "/usermode — включить/выключить режим обычного пользователя (проверить ИИ-ответы)\n\n"
     "Посты из канала Витуса бот сам пересылает в наш канал "
     "(если он добавлен туда администратором)."
 )
@@ -43,6 +47,10 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
     router.message.filter(F.chat.type == "private")  # «Фильтр: только личка»
     important_kb = build_keyboard(IMPORTANT_KEYBOARD)
     state = {"busy": False, "task": None}
+    drafts: dict[str, list[int]] = {}  # черновик рассылки: токен -> id сообщений поста
+    albums: dict[str, list[int]] = {}  # альбом админа собирается здесь, пока приходят его части
+    user_mode: set[int] = set()  # админы, временно переключённые в режим обычного пользователя
+    counter = itertools.count(1)
 
     def is_admin(user_id: int) -> bool:
         return user_id in cfg.admin_ids
@@ -75,29 +83,58 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
         )
         await message.answer("Выбери рассылку — сначала покажу превью:", reply_markup=kb)
 
-    @router.message(Command("send"), F.from_user.id.func(is_admin))
-    async def send_copy(message: Message):
-        src = message.reply_to_message
-        if not src:
-            await message.answer("Ответь командой /send на сообщение, которое нужно разослать.")
-            return
-        await message.answer(
-            "Куда отправить это сообщение?",
+    async def ask_destination(chat_id: int, message_ids: list[int], bot: Bot) -> None:
+        token = f"d{next(counter)}"
+        drafts[token] = message_ids
+        while len(drafts) > 50:
+            drafts.pop(next(iter(drafts)))
+        await bot.send_message(
+            chat_id,
+            "Куда отправить этот пост?",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="👥 Всей базе", callback_data=f"cp:{src.message_id}")],
-                    [InlineKeyboardButton(text="📣 В канал", callback_data=f"cpch:{src.message_id}")],
+                    [InlineKeyboardButton(text="👥 Всей базе", callback_data=f"cp:{token}")],
+                    [InlineKeyboardButton(text="📣 В канал", callback_data=f"cpch:{token}")],
                     [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")],
                 ]
             ),
         )
 
+    def draft_ids(token: str) -> list[int] | None:
+        if token in drafts:
+            return drafts[token]
+        return [int(token)] if token.isdigit() else None  # кнопки, созданные до обновления
+
+    @router.message(Command("send"), F.from_user.id.func(is_admin))
+    async def send_copy(message: Message, bot: Bot):
+        src = message.reply_to_message
+        if not src:
+            await message.answer("Просто пришли мне пост — я спрошу, куда его отправить.")
+            return
+        await ask_destination(message.chat.id, [src.message_id], bot)
+
+    @router.message(Command("usermode"), F.from_user.id.func(is_admin))
+    async def toggle_user_mode(message: Message):
+        uid = message.from_user.id
+        if uid in user_mode:
+            user_mode.discard(uid)
+            await message.answer("👑 Админский режим включён: присылай посты, я спрошу, куда их отправить.")
+        else:
+            user_mode.add(uid)
+            await message.answer(
+                "👤 Режим обычного пользователя: отвечаю как ИИ, как всем. "
+                "Вернуться в админский режим — снова /usermode."
+            )
+
     @router.callback_query(F.data.startswith("cpch:"), F.from_user.id.func(is_admin))
     async def copy_to_channel(call: CallbackQuery, bot: Bot):
-        message_id = int(call.data.split(":", 1)[1])
+        ids = draft_ids(call.data.split(":", 1)[1])
         await call.answer()
+        if not ids:
+            await call.message.edit_text("Черновик устарел (бот перезапускался). Пришли пост ещё раз.")
+            return
         try:
-            await bot.copy_message(cfg.promo_channel_id, call.message.chat.id, message_id)
+            await copy_sender(bot, call.message.chat.id, ids)(cfg.promo_channel_id)
             await call.message.edit_text("✅ Отправлено в канал")
         except Exception as e:
             await call.message.edit_text(
@@ -145,7 +182,15 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
             await call.message.edit_text(f"Не удалось прочитать базу: {e}")
             return
 
-        send_one = template_sender(bot, arg) if kind == "go" else copy_sender(bot, call.message.chat.id, int(arg))
+        if kind == "cp":
+            ids_to_copy = draft_ids(arg)
+            if not ids_to_copy:
+                await call.answer()
+                await call.message.edit_text("Черновик устарел (бот перезапускался). Пришли пост ещё раз.")
+                return
+            send_one = copy_sender(bot, call.message.chat.id, ids_to_copy)
+        else:
+            send_one = template_sender(bot, arg)
         await call.answer()
         await call.message.edit_text(f"🚀 Рассылка запущена на {len(ids)} чел. Пришлю отчёт, когда закончу.")
 
@@ -182,6 +227,11 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
 
     @router.message()
     async def on_message(message: Message, bot: Bot):
+        uid = message.from_user.id
+        if is_admin(uid) and uid not in user_mode:
+            await admin_draft(message, bot)  # админский режим: без ИИ, без «ВАЖНО», без записи в базу
+            return
+
         await sheet.log_message(message)  # «База игроков» (append)
 
         text = message.text or message.caption
@@ -198,6 +248,32 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
 
         await asyncio.sleep(cfg.followup_delay)  # «Wait3»
         await send_html(bot, chat_id, IMPORTANT_TEXT, important_kb)  # «Send a text message»
+
+    async def admin_draft(message: Message, bot: Bot) -> None:
+        if message.text and message.text.startswith("/") and not message.text.startswith("/start"):
+            await message.answer("Не знаю такой команды.\n\n" + ADMIN_HELP, parse_mode="HTML")
+            return
+        if message.text and message.text.startswith("/start"):
+            await message.answer(ADMIN_HELP, parse_mode="HTML")
+            return
+        group = message.media_group_id
+        if not group:
+            await ask_destination(message.chat.id, [message.message_id], bot)
+            return
+        if group in albums:
+            albums[group].append(message.message_id)
+            return
+        albums[group] = [message.message_id]
+
+        async def flush():
+            await asyncio.sleep(1.5)  # ждём остальные части альбома
+            ids = sorted(albums.pop(group, []))
+            if ids:
+                await ask_destination(message.chat.id, ids, bot)
+
+        task = asyncio.create_task(flush())
+        state.setdefault("album_tasks", set()).add(task)
+        task.add_done_callback(state["album_tasks"].discard)
 
     return router
 
