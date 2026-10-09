@@ -21,7 +21,8 @@ from .config import Config
 from .sender import build_keyboard, send_html, send_post
 from .repost import Reposter
 from .sheets import PlayersSheet
-from .texts import BROADCASTS, IMPORTANT_KEYBOARD, IMPORTANT_TEXT, WELCOME_CAPTION, WELCOME_PHOTO
+from .texts import BROADCASTS, IMPORTANT_KEYBOARD, IMPORTANT_TEXT
+from .welcome import Welcome, welcome_from_message
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ ADMIN_HELP = (
     "/send — ответь этой командой на любое сообщение (текст, фото, видео), "
     "и выбери: разослать копию всей базе или опубликовать в канал\n"
     "/stats — сколько людей в базе\n"
+    "/welcome — показать текущее приветствие. Сменить: пришли пост и нажми «Сделать приветствием»\n"
     "/myid — твой Telegram ID\n"
     "/usermode — включить/выключить режим обычного пользователя (проверить ИИ-ответы)\n\n"
     "Посты из канала Витуса бот сам пересылает в наш канал "
@@ -42,13 +44,13 @@ ADMIN_HELP = (
 )
 
 
-def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Reposter) -> Router:
+def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Reposter, welcome: Welcome) -> Router:
     router = Router()
     router.message.filter(F.chat.type == "private")  # «Фильтр: только личка»
     important_kb = build_keyboard(IMPORTANT_KEYBOARD)
     state = {"busy": False, "task": None}
-    drafts: dict[str, list[int]] = {}  # черновик рассылки: токен -> id сообщений поста
-    albums: dict[str, list[int]] = {}  # альбом админа собирается здесь, пока приходят его части
+    drafts: dict[str, list[Message]] = {}  # черновик рассылки: токен -> сообщения поста
+    albums: dict[str, list[Message]] = {}  # альбом админа собирается здесь, пока приходят его части
     user_mode: set[int] = set()  # админы, временно переключённые в режим обычного пользователя
     counter = itertools.count(1)
 
@@ -83,9 +85,9 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
         )
         await message.answer("Выбери рассылку — сначала покажу превью:", reply_markup=kb)
 
-    async def ask_destination(chat_id: int, message_ids: list[int], bot: Bot) -> None:
+    async def ask_destination(chat_id: int, messages: list[Message], bot: Bot) -> None:
         token = f"d{next(counter)}"
-        drafts[token] = message_ids
+        drafts[token] = messages
         while len(drafts) > 50:
             drafts.pop(next(iter(drafts)))
         await bot.send_message(
@@ -95,6 +97,7 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
                 inline_keyboard=[
                     [InlineKeyboardButton(text="👥 Всей базе", callback_data=f"cp:{token}")],
                     [InlineKeyboardButton(text="📣 В канал", callback_data=f"cpch:{token}")],
+                    [InlineKeyboardButton(text="👋 Сделать приветствием", callback_data=f"wl:{token}")],
                     [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")],
                 ]
             ),
@@ -102,7 +105,7 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
 
     def draft_ids(token: str) -> list[int] | None:
         if token in drafts:
-            return drafts[token]
+            return [m.message_id for m in drafts[token]]
         return [int(token)] if token.isdigit() else None  # кнопки, созданные до обновления
 
     @router.message(Command("send"), F.from_user.id.func(is_admin))
@@ -111,7 +114,36 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
         if not src:
             await message.answer("Просто пришли мне пост — я спрошу, куда его отправить.")
             return
-        await ask_destination(message.chat.id, [src.message_id], bot)
+        await ask_destination(message.chat.id, [src], bot)
+
+    @router.message(Command("welcome"), F.from_user.id.func(is_admin))
+    async def show_welcome(message: Message, bot: Bot):
+        await message.answer(
+            "👋 Так сейчас выглядит приветствие (на /start и «Привет»). "
+            "Чтобы поменять — пришли мне новый пост и нажми «Сделать приветствием»."
+        )
+        await welcome.send(bot, message.chat.id)
+
+    @router.callback_query(F.data.startswith("wl:"), F.from_user.id.func(is_admin))
+    async def set_welcome(call: CallbackQuery, bot: Bot):
+        messages = drafts.get(call.data.split(":", 1)[1])
+        await call.answer()
+        if not messages:
+            await call.message.edit_text("Черновик устарел (бот перезапускался). Пришли пост ещё раз.")
+            return
+        src = next((m for m in messages if m.caption or m.text), messages[0])
+        media = next((m for m in messages if m.photo or m.video or m.animation), src)
+        try:
+            data = welcome_from_message(media)
+            if media is not src:  # альбом: картинка из первой части, подпись — откуда она есть
+                data["html"] = src.html_text
+            await welcome.save(data)
+        except Exception as e:
+            await call.message.edit_text(f"Не получилось сохранить приветствие: {e}")
+            return
+        note = "\n(В альбоме приветствием стала первая картинка.)" if len(messages) > 1 else ""
+        await call.message.edit_text("✅ Приветствие обновлено. Вот как его увидят пользователи:" + note)
+        await welcome.send(bot, call.message.chat.id)
 
     @router.message(Command("usermode"), F.from_user.id.func(is_admin))
     async def toggle_user_mode(message: Message):
@@ -240,14 +272,14 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
         chat_id = message.chat.id
 
         if text.startswith("/start") or text in GREETINGS:
-            await send_post(bot, chat_id, WELCOME_PHOTO, WELCOME_CAPTION)  # «Розыгрыш»
+            await welcome.send(bot, chat_id)  # «Розыгрыш» — приветствие, которое задаёт админ
         else:
             await bot.send_chat_action(chat_id, ChatAction.TYPING)
             answer = await ai.answer(message.from_user.id, text)  # «AI Agent1»
             await send_html(bot, chat_id, answer)  # «Ии-ответ»
 
         await asyncio.sleep(cfg.followup_delay)  # «Wait3»
-        await send_html(bot, chat_id, IMPORTANT_TEXT, important_kb)  # «Send a text message»
+        await send_html(bot, chat_id, IMPORTANT_TEXT, important_kb, no_preview=True)  # «Send a text message»
 
     async def admin_draft(message: Message, bot: Bot) -> None:
         if message.text and message.text.startswith("/") and not message.text.startswith("/start"):
@@ -258,18 +290,18 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
             return
         group = message.media_group_id
         if not group:
-            await ask_destination(message.chat.id, [message.message_id], bot)
+            await ask_destination(message.chat.id, [message], bot)
             return
         if group in albums:
-            albums[group].append(message.message_id)
+            albums[group].append(message)
             return
-        albums[group] = [message.message_id]
+        albums[group] = [message]
 
         async def flush():
             await asyncio.sleep(1.5)  # ждём остальные части альбома
-            ids = sorted(albums.pop(group, []))
-            if ids:
-                await ask_destination(message.chat.id, ids, bot)
+            parts = sorted(albums.pop(group, []), key=lambda m: m.message_id)
+            if parts:
+                await ask_destination(message.chat.id, parts, bot)
 
         task = asyncio.create_task(flush())
         state.setdefault("album_tasks", set()).add(task)

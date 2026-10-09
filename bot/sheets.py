@@ -16,6 +16,7 @@ class PlayersSheet:
         self._spreadsheet_id = spreadsheet_id
         self._gid = gid
         self._ws: gspread.Worksheet | None = None
+        self._book: gspread.Spreadsheet | None = None
         self._header: list[str] | None = None
         self._lock = asyncio.Lock()
 
@@ -23,10 +24,15 @@ class PlayersSheet:
     def enabled(self) -> bool:
         return bool(self._sa)
 
+    def _spreadsheet(self) -> gspread.Spreadsheet:
+        if self._book is None:
+            client = gspread.service_account_from_dict(self._sa)
+            self._book = client.open_by_key(self._spreadsheet_id)
+        return self._book
+
     def _worksheet(self) -> gspread.Worksheet:
         if self._ws is None:
-            client = gspread.service_account_from_dict(self._sa)
-            self._ws = client.open_by_key(self._spreadsheet_id).get_worksheet_by_id(self._gid)
+            self._ws = self._spreadsheet().get_worksheet_by_id(self._gid)
         return self._ws
 
     def _append_sync(self, record: dict) -> None:
@@ -82,3 +88,48 @@ class PlayersSheet:
             raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON не задан — база недоступна")
         async with self._lock:
             return await asyncio.to_thread(self._ids_sync)
+
+
+SETTINGS_SHEET = "Настройки бота"
+
+
+class SettingsStore:
+    """Настройки, которые админ меняет из Telegram (например, приветствие).
+
+    Хранятся на отдельном листе «Настройки бота» той же таблицы: ключ в колонке A, значение в B.
+    Файлы на Railway стираются при каждом деплое, а таблица — нет.
+    """
+
+    def __init__(self, sheet: PlayersSheet):
+        self._sheet = sheet
+
+    def _ws(self) -> gspread.Worksheet:
+        book = self._sheet._spreadsheet()
+        try:
+            return book.worksheet(SETTINGS_SHEET)
+        except gspread.WorksheetNotFound:
+            return book.add_worksheet(SETTINGS_SHEET, rows=20, cols=2)
+
+    def _get_sync(self, key: str) -> str | None:
+        for row in self._ws().get_all_values():
+            if row and row[0] == key:
+                return row[1] if len(row) > 1 else ""
+        return None
+
+    def _set_sync(self, key: str, value: str) -> None:
+        ws = self._ws()
+        for i, row in enumerate(ws.get_all_values(), start=1):
+            if row and row[0] == key:
+                ws.update_cell(i, 2, value)
+                return
+        ws.append_row([key, value], value_input_option="RAW")
+
+    async def get(self, key: str) -> str | None:
+        if not self._sheet.enabled:
+            return None
+        return await asyncio.to_thread(self._get_sync, key)
+
+    async def set(self, key: str, value: str) -> None:
+        if not self._sheet.enabled:
+            raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON не задан — сохранить настройку негде")
+        await asyncio.to_thread(self._set_sync, key, value)

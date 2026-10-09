@@ -5,7 +5,7 @@ import re
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions, WebAppInfo
 
 log = logging.getLogger(__name__)
 
@@ -43,15 +43,20 @@ async def with_retry(factory, retries: int = 3):
             await asyncio.sleep(e.retry_after + 1)
 
 
-async def send_html(bot: Bot, chat_id: int, text: str, keyboard=None):
+async def send_html(bot: Bot, chat_id: int, text: str, keyboard=None, no_preview: bool = False):
+    preview = LinkPreviewOptions(is_disabled=True) if no_preview else None
     try:
-        return await with_retry(lambda: bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=keyboard))
+        return await with_retry(
+            lambda: bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=keyboard, link_preview_options=preview)
+        )
     except TelegramBadRequest as e:
         # ИИ иногда отдаёт битый HTML (особенно если ответ обрезан по max_tokens)
         if "parse entities" not in str(e):
             raise
         log.warning("Битый HTML, отправляю без разметки: %s", e)
-        return await with_retry(lambda: bot.send_message(chat_id, strip_html(text), reply_markup=keyboard))
+        return await with_retry(
+            lambda: bot.send_message(chat_id, strip_html(text), reply_markup=keyboard, link_preview_options=preview)
+        )
 
 
 async def send_post(bot: Bot, chat_id: int, photo: str, caption: str, keyboard=None):
