@@ -279,7 +279,7 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
             await send_html(bot, chat_id, answer)  # «Ии-ответ»
 
         await asyncio.sleep(cfg.followup_delay)  # «Wait3»
-        await send_html(bot, chat_id, IMPORTANT_TEXT, important_kb)  # «Send a text message»
+        await send_html(bot, chat_id, IMPORTANT_TEXT, important_kb, no_preview=True)  # «Send a text message»
 
     async def admin_draft(message: Message, bot: Bot) -> None:
         if message.text and message.text.startswith("/") and not message.text.startswith("/start"):

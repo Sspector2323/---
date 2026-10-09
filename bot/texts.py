@@ -94,24 +94,19 @@ WELCOME_CAPTION = """‼️ <b>НОВОЕ КОЛЕСО В FARO</b> ‼️
 """
 
 # Сообщение через FOLLOWUP_DELAY секунд после любого ответа (нода «Send a text message»)
-IMPORTANT_TEXT = """<b>⚠️ ВАЖНО!</b>
+IMPORTANT_TEXT = """⚠️ <b>Минута, которая сэкономит тебе нервы</b>
 
-Чтобы <b>не было проблем с выводом</b> и игра приносила только <b>удовольствие</b>:
+Чтобы вывод проходил <b>без проблем</b>, а игра была в удовольствие, загляни в разделы ниже:
 
-📖 Изучи <a href="https://t.me/vituss2">Официальный канал Витуса</a>
-📋 Посмотри список <b>ЛИЦЕНЗИОННЫХ</b> казино-проектов
+🎰 <b>Казино</b> — проекты, где играет Витус
+💎 <b>Депозит с крипты</b> — без блокировок карты
+🎁 <b>Промокод</b> <code>VITUSSRAZOR</code> — как активировать
+📖 <b>Справочник игрока</b> — всё в одном месте
 
-📌 Специально для тебя мы подготовили:
-• Инструкцию по депозиту с крипты
-• Гайд по промокодам
-• Полную версию Справочника игрока
+📢 Новости, заносы и розыгрыши — в <a href="https://t.me/vituss2">канале Витуса</a>
 
-🔥 <b>Играй в плюс!</b>
-
-🐦‍🔥 <b>Вся информация по кнопкам ниже</b>👇
-
-"""
-IMPORTANT_KEYBOARD = [[('🎰 Лицензионное казино', 'web_app', 'https://officialvitussbotspace.framer.website/отдельный-поиск')], [('💎 Как депать с крипты', 'web_app', 'https://officialvitussbotspace.framer.website/как-депать-с-крипты-2')], [('🎁 Как использовать промокод', 'web_app', 'https://officialvitussbotspace.framer.website/как-испольщовать-промокод')], [('✅СПРАВОЧНИК ИГРОКА', 'web_app', 'https://officialvitussbotspace.framer.website')]]
+🔥 <b>Играй в плюс!</b> Жми на кнопку 👇"""
+IMPORTANT_KEYBOARD = [[('🎰 Казино Витуса', 'web_app', 'https://officialvitussbotspace.framer.website/отдельный-поиск')], [('💎 Как депать с крипты', 'web_app', 'https://officialvitussbotspace.framer.website/как-депать-с-крипты-2')], [('🎁 Как использовать промокод', 'web_app', 'https://officialvitussbotspace.framer.website/как-испольщовать-промокод')], [('📖 Справочник игрока', 'web_app', 'https://officialvitussbotspace.framer.website')]]
 
 # Анонс стрима (рассылка «Стрим начался», «Стрим → в канал» и автопересылка «как стрим»)
 STREAM_CAPTION = """<b>Погнали! Стрим уже идёт</b>👇 📱🔴https://kick.com/vituss
