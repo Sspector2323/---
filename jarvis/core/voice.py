@@ -68,6 +68,26 @@ class Voice:
         self.rec.energy_threshold = min(1500.0, max(60.0, max(self.ambient * 1.4, 120.0) / sens))
 
     # ---------- Слух ----------
+    stop_at = 0.0         # когда последний раз велели замолчать (жест, горячая клавиша)
+    force_until = 0.0     # до этого времени следующая фраза — команда без слова «Джарвис»
+
+    def interrupt(self):
+        """Замолчать немедленно и бросить текущую задачу (ладонь, горячая клавиша)."""
+        self.stop_at = time.time()
+        self.barge_text = ""
+        hearing.DIAG["barge"] = "остановлен жестом или клавишей"
+        try:
+            import pygame
+            if pygame.mixer.get_init():
+                pygame.mixer.music.stop()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def wake(self):
+        """Слушаю без слова «Джарвис» (жест «победа», горячая клавиша, хлопок)."""
+        self.force_until = time.time() + 8
+        self.beep()
+
     spoken_text = ""      # что Джарвис говорил последним — чтобы не принять своё эхо за команду
     spoken_until = 0.0
     CLAP = "__clap__"     # двойной хлопок
@@ -161,7 +181,7 @@ class Voice:
         self.barge_text = None
         cached = self._cache_path(text) if cache else None
         with self.lock:
-            hearing.DIAG["state"] = "говорю"
+            hearing.DIAG.update(state="говорю", last_said=text, said_at=time.time())
             self.spoken_text, self.spoken_until = text, time.time() + 600
             try:
                 self._say_locked(text, cached)
@@ -394,6 +414,14 @@ class Voice:
 class TextIO:
     """Режим без микрофона — для проверки и тихой работы."""
     lock = threading.Lock()
+    stop_at = 0.0
+    force_until = 0.0
+
+    def interrupt(self):
+        self.stop_at = time.time()
+
+    def wake(self):
+        pass
 
     last_stt = 0.0
     confirming = False

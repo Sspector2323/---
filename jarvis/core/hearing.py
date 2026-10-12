@@ -21,6 +21,7 @@ DIAG = {
     "echo_drops": 0, "last_echo": "",
     "barge": "",                # чем закончилась последняя попытка перебить
     "claps": 0, "stt_errors": 0, "stt_note": "",
+    "last_said": "", "said_at": 0.0,  # что Джарвис сказал последним — для субтитров на 3D-ядре
 }
 
 _down_until = 0.0  # Scribe не ответил — 10 минут пользуемся Google

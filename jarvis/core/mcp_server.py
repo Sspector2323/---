@@ -68,6 +68,16 @@ def call(name: str, args: dict) -> tuple[str, bool]:
     if t.dangerous and os.getenv("JARVIS_HOST") != "claude_code" and not ask_user(name, args):
         return ("Действие не подтверждено. Подтверждение идёт голосом через Джарвиса — "
                 "он должен быть запущен."), True
+    if t.in_main:  # браузер и камера живут в главном процессе Джарвиса — передаём туда
+        import requests
+        try:
+            r = requests.post(f"http://127.0.0.1:{os.getenv('JARVIS_PORT', config.DASHBOARD_PORT)}/api/exec",
+                              json={"name": name, "args": args}, headers={"X-Jarvis-Token": _token()},
+                              proxies={"http": None, "https": None}, timeout=180)
+            d = r.json()
+            return str(d.get("result")), not d.get("ok")
+        except Exception as e:  # noqa: BLE001
+            return f"Джарвис не отвечает (он должен быть запущен): {e}", True
     try:
         return str(t.func(**args)), False
     except Exception as e:  # noqa: BLE001

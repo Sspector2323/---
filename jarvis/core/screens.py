@@ -48,17 +48,29 @@ def main():
                 "J.A.R.V.I.S.", f"{base}/intro?{q}", screen=s, fullscreen=True, frameless=True, on_top=True,
                 background_color="#01040a", js_api=api, focus=role == "main"))
 
-    views = {"main": "all", "left": "work", "right": "life"}
+    # Три монитора: в центре — 3D-ядро, слева — работа, справа — личное.
+    # Два: на главном — весь дашборд, на втором — ядро. Один: дашборд (ядро — кнопкой ◎ в шапке).
+    pages = {"main": ("J.A.R.V.I.S.", "/?view=all"), "left": ("J.A.R.V.I.S. · работа", "/?view=work"),
+             "right": ("J.A.R.V.I.S. · личное", "/?view=life")}
+    core = ("J.A.R.V.I.S. · ядро", "/core")
+    plan = []
+    for i, (role, s) in enumerate(screens):
+        if config.MAIN_SCREEN == "core" and len(screens) >= 3 and role == "main":
+            plan.append((role, s, core))
+        elif config.MAIN_SCREEN == "core" and len(screens) == 2 and role != "main":
+            plan.append((role, s, core))
+        else:
+            plan.append((role, s, pages[role]))
 
     def open_dashboards():
         if "dash" not in mode or config.DASHBOARD_SCREENS == "off":
             return
-        for role, s in screens:
+        for role, s, (title, path) in plan:
             if config.DASHBOARD_SCREENS == "main" and role != "main":
                 continue
-            title = "J.A.R.V.I.S." if role == "main" else f"J.A.R.V.I.S. · {'работа' if role == 'left' else 'личное'}"
-            webview.create_window(title, f"{base}/?view={views[role]}", screen=s, maximized=True,
-                                  background_color="#03070d")
+            fullscreen = path == "/core"  # ядро — во весь экран, без рамок
+            webview.create_window(title, f"{base}{path}", screen=s, maximized=not fullscreen, fullscreen=fullscreen,
+                                  background_color="#01040a" if fullscreen else "#03070d")
 
     def timeline():
         api.skip_event.wait(INTRO_SECONDS)

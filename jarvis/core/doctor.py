@@ -161,6 +161,15 @@ def main():
         print(f"  {OK} окна на всех мониторах (pywebview) установлены")
     except Exception:  # noqa: BLE001
         print(f"  {WARN} pywebview не установлен — анимация будет в браузере. Запустите update_jarvis.bat")
+
+    print("\n— Браузер, камера, жесты, клавиши —")
+    import importlib.util
+    for mod, what in (("playwright", "управление браузером"), ("cv2", "камера"), ("mediapipe", "жесты рукой"),
+                      ("keyboard", "горячие клавиши")):
+        ok = importlib.util.find_spec(mod) is not None
+        print(f"  {OK if ok else WARN} {what}" + ("" if ok else f" — нет пакета {mod}, запустите update_jarvis.bat"))
+    from .tools.documents import find_browser
+    print(f"  {OK if find_browser() else WARN} Edge/Chrome: {find_browser() or 'не найден — впишите путь в BROWSER_PATH'}")
     print("\nГотово. Если есть ❌ — сфотографируйте это окно (ключей в нём не видно) и пришлите Claude.")
     print("Чтобы открыть ИМЕННО этот .env в Блокноте — дважды кликните edit_env.bat")
 

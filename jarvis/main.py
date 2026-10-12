@@ -55,8 +55,16 @@ def ask_with_fillers(io, ask, command: str, cancel=None) -> tuple[str | None, st
     mode = config.FILLERS
     waits = fillers.waiting(config.USER_NAME)
     phrase = fillers.first(command, config.USER_NAME)
-    started, said_long = time.time(), False
+    started, said_long, music_on = time.time(), False, False
+    from core import music
     while worker.is_alive():
+        if getattr(io, "stop_at", 0) > started:  # ладонь или горячая клавиша: бросаем задачу
+            if cancel:
+                cancel()
+            music.stop("work")
+            return None, ""
+        if not music_on and time.time() - started > 4:  # долгая задача — тихий фон (если MUSIC=all)
+            music_on = music.play("work", 0.12, loop=True, fade_ms=1500)
         if phrase and mode != "off" and not io.confirming:
             io.say(phrase, cache=True, quiet=True)
             if io.barge_text is not None:  # перебили во время «секунду…» — бросаем старую задачу
@@ -69,6 +77,7 @@ def ask_with_fillers(io, ask, command: str, cancel=None) -> tuple[str | None, st
             phrase = next(waits)
         elif not said_long and time.time() - started > 25:  # одна фраза — и тишина; долгую задачу отметим раз
             phrase, said_long = fillers.long(config.USER_NAME), True
+    music.stop("work")
     return box.get("answer", "Готово."), None
 
 
@@ -109,6 +118,9 @@ def main():
     if not intro_on and want_dash and intro.launch_native(url, "dash"):
         how = "native"
     intro_on = bool(how) and intro_on
+    if intro_on:
+        from core import music
+        music.boot()
     brief_box = {}
     if config.MORNING_BRIEF:
         from core.briefing import brief
@@ -162,6 +174,33 @@ def main():
             return answer
 
     dashboard.BRAIN.update(ask=ask, confirm=confirmer.ask, say=io.say, confirmer=confirmer)
+
+    # Жесты и горячие клавиши: «стоп», «слушаю», «да/нет» на подтверждение, «убрать панель»
+    from core import gestures, hotkeys
+
+    def answer_pending(yes: bool):
+        pend = confirmer.listing()
+        if pend:
+            confirmer.answer(pend[0]["id"], yes)
+
+    def close_top_panel():
+        if dashboard.SCREEN["panels"]:
+            dashboard.screen_op("close", {"id": dashboard.SCREEN["panels"][0]["id"]})
+
+    def stop_all():
+        io.interrupt()
+        if getattr(brain, "cancel", None):
+            brain.cancel()
+
+    dashboard.BRAIN.update(wake=io.wake, stop=stop_all)
+    gestures.HANDLERS.update(stop=stop_all, wake=io.wake, yes=lambda: answer_pending(True),
+                             no=lambda: answer_pending(False), close_panel=close_top_panel)
+    if not text_mode:
+        keys = hotkeys.start(io)
+        if keys:
+            print(f"⌨ Горячие клавиши: {keys}")
+    if config.GESTURES and not text_mode:
+        threading.Thread(target=lambda: print("✋ " + gestures.start()), daemon=True).start()
     from core.telegram_bot import Bot
     Bot(ask, confirmer).start()  # личный Телеграм-бот (если задан TELEGRAM_BOT_TOKEN)
     from core import tg_reader
@@ -199,7 +238,7 @@ def main():
             follow_up_until = time.time() + 1  # после перебивания «Джарвис» говорить не нужно
         else:
             heard = io.listen(timeout=None if text_mode else 5, phrase_limit=45,
-                              accurate=time.time() < follow_up_until)
+                              accurate=time.time() < max(follow_up_until, getattr(io, "force_until", 0)))
         if not heard:
             continue
         if heard == getattr(io, "CLAP", None):  # двойной хлопок — слушаю без слова «Джарвис»
@@ -212,7 +251,7 @@ def main():
             heard = f"{config.WAKE_WORDS[0] if config.WAKE_WORDS else 'джарвис'}, {command}"
         print(f"🎤 Вы: {heard}" + ("" if text_mode else f"   (⏱ распознал за {io.last_stt:.1f} с)"))
 
-        if text_mode or time.time() < follow_up_until:
+        if text_mode or time.time() < max(follow_up_until, getattr(io, "force_until", 0)):
             command = strip_wake(heard) or heard
         else:
             command = strip_wake(heard)

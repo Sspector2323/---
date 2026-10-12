@@ -28,7 +28,7 @@
   .wrap { position: relative; max-width: 1680px; margin: 0 auto; padding: 18px 24px 40px; }
 
   /* ---------- Шапка ---------- */
-  header.top { display: grid; grid-template-columns: auto 1fr auto auto auto; align-items: center; gap: 22px; margin-bottom: 18px; }
+  header.top { display: grid; grid-template-columns: auto 1fr auto auto auto auto; align-items: center; gap: 22px; margin-bottom: 18px; }
   .brand { display: flex; align-items: center; gap: 16px; }
   .reactor { width: 58px; height: 58px; border-radius: 50%; position: relative; flex: none;
              background: radial-gradient(circle, #eaffff 0 10%, #38d9ff 22%, rgba(10,132,255,.35) 45%, transparent 62%);
@@ -295,6 +295,7 @@
     <div class="spacer"><span class="viewtag" id="viewtag"></span></div>
     <div class="weather" id="weather" title="Обновить погоду"><span class="ic">⛅</span><div><div class="t">—</div><div class="muted">погода</div></div></div>
     <div class="clock" id="clockBox" title="Сводка дня"><div id="time">--:--</div><div id="date"></div></div>
+    <a class="icon-btn" href="/core" title="3D-ядро Джарвиса">◎</a>
     <a class="icon-btn" href="/settings" title="Настройки и доступы">⚙</a>
   </header>
 
@@ -764,10 +765,18 @@ async function pollHear() {
       <span class="k">Услышал</span><span class="v">${d.last_text ? `«${esc(d.last_text)}» <span class="muted">${esc(d.last_engine)}, ${d.last_stt} с${ago}</span>` : "—"}</span>
       <span class="k">Своё эхо</span><span class="v">${d.echo_drops ? `отсеял ${d.echo_drops} раз${d.last_echo ? ` · «${esc(d.last_echo.slice(0, 50))}»` : ""}` : "не было"}</span>
       <span class="k">Перебивание</span><span class="v">${esc(d.barge || "—")}</span>
-      <span class="k">Хлопки</span><span class="v">${d.claps ? `разбудили ${d.claps} раз` : "двойной хлопок — и он слушает"}</span>`;
+      <span class="k">Хлопки</span><span class="v">${d.claps ? `разбудили ${d.claps} раз` : "двойной хлопок — и он слушает"}</span>
+      <span class="k">Жесты</span><span class="v">${d.gestures && d.gestures.on ? `🔴 камера включена${d.gestures.gesture ? " · " + esc(d.gestures.gesture) : ""}${d.gestures.last_action ? " · " + esc(d.gestures.last_action) : ""}` : "выключены («Джарвис, включи жесты»)"}</span>`;
   } catch {}
 }
 pollHear(); setInterval(pollHear, 1500);
+
+// Пробел — «слушаю», Escape — «замолчи» (когда курсор не в поле ввода)
+addEventListener("keydown", e => {
+  if (e.target.closest && e.target.closest("input, textarea, select")) return;
+  if (e.code === "Space") { e.preventDefault(); post("/api/wake", {}); }
+  if (e.code === "Escape" && !$("confirmBox").classList.contains("show")) post("/api/wake", {stop: true});
+});
 
 // ---------- Подсказки: что можно сказать ----------
 const SUGGEST = ["Джарвис, сделай PDF: план запуска на октябрь с этапами и сроками", "Джарвис, что у меня на экране?",

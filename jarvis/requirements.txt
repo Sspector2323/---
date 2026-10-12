@@ -22,4 +22,7 @@ pywebview>=5.3
 
 # Погода/сеть
 requests>=2.31
-opencv-python>=4.8   # камера для инструмента look
+opencv-contrib-python>=4.8   # камера (look, жесты); та же сборка, что нужна mediapipe
+playwright>=1.47   # управление браузером (Edge/Chrome уже есть в Windows)
+mediapipe>=0.10.14   # жесты рукой
+keyboard>=0.13   # горячие клавиши

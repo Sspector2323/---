@@ -15,6 +15,7 @@ class Tool:
     properties: dict = field(default_factory=dict)
     required: list = field(default_factory=list)
     dangerous: bool = False  # требует голосового подтверждения
+    in_main: bool = False  # выполняется только в главном процессе Джарвиса (браузер, камера жестов)
 
     def schema(self) -> dict:
         return {
@@ -32,9 +33,9 @@ REGISTRY: dict[str, Tool] = {}
 
 
 def tool(name: str, description: str, properties: dict | None = None,
-         required: list | None = None, dangerous: bool = False):
+         required: list | None = None, dangerous: bool = False, in_main: bool = False):
     def wrap(func: Callable) -> Callable:
-        REGISTRY[name] = Tool(name, description, func, properties or {}, required or [], dangerous)
+        REGISTRY[name] = Tool(name, description, func, properties or {}, required or [], dangerous, in_main)
         return func
     return wrap
 
@@ -49,5 +50,5 @@ def I(desc: str, **extra) -> dict:
 
 def load_all() -> dict[str, Tool]:
     # Импорт модулей регистрирует их инструменты
-    from . import system, files, tasks, mail, info, claude_code, notion, github, workspace, telegram, chats, documents, screen, vision  # noqa: F401
+    from . import system, files, tasks, mail, info, claude_code, notion, github, workspace, telegram, chats, documents, screen, vision, browser  # noqa: F401
     return REGISTRY

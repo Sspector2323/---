@@ -18,7 +18,7 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 import flask.cli  # noqa: E402
 flask.cli.show_server_banner = lambda *a, **k: None  # без служебного текста Flask в окне Джарвиса
 
-BRAIN = {"ask": None, "confirm": None, "say": None, "confirmer": None}
+BRAIN = {"ask": None, "confirm": None, "say": None, "confirmer": None, "wake": None, "stop": None}
 _ask_lock = threading.Lock()
 
 # Секрет этого запуска: без него дашборд не примет изменения. Чужие сайты, открытые в том же
@@ -82,6 +82,10 @@ SETTINGS = [
     ("CLAP_WAKE", "Двойной хлопок будит Джарвиса (без слова «Джарвис»)", "select", ["true", "false"], "voice"),
     ("SOUNDS", "Звуки интерфейса: «слушаю», «готово», «ошибка»", "select", ["true", "false"], "voice"),
     ("FILLERS", "Пока думает: one — одна короткая фраза и тишина; chatty — болтает; off — молча", "select", ["one", "chatty", "off"], "voice"),
+    ("MUSIC", "Музыка: boot — заставка при запуске; all — ещё и тихий фон за работой; off — без музыки", "select", ["boot", "all", "off"], "voice"),
+    ("HOTKEY_TALK", "Горячая клавиша «слушаю» (без слова «Джарвис»)", "text", "ctrl+alt+j", "voice"),
+    ("HOTKEY_STOP", "Горячая клавиша «замолчи и брось задачу»", "text", "ctrl+alt+x", "voice"),
+    ("GESTURES", "Жесты перед веб-камерой сразу при запуске (камера будет включена)", "select", ["false", "true"], "voice"),
     ("MIC_SENSITIVITY", "Чувствительность микрофона (больше — слышит тише; если приходится повышать голос — 1.5 или 2)", "select", ["0.7", "1.0", "1.5", "2.0", "3.0"], "voice"),
     ("VOICE_SPEED", "Темп речи (1.0 — обычный, 1.12 — чуть быстрее)", "select", ["1.0", "1.05", "1.12", "1.2", "1.3"], "voice"),
     ("VOICE_PITCH", "Высота голоса Microsoft (меньше — глубже)", "select", ["-6Hz", "-12Hz", "-18Hz", "+0Hz"], "voice"),
@@ -89,6 +93,7 @@ SETTINGS = [
     ("WAKE_WORDS", "Слова-активаторы", "text", "джарвис,jarvis", "voice"),
     ("USER_NAME", "Как к вам обращаться", "text", "Сабина", "look"),
     ("GREETING", "Приветствие при запуске ({user} — имя)", "text", "Моё почтение, {user}. Я к вашим услугам.", "look"),
+    ("MAIN_SCREEN", "Главный монитор: core — 3D-ядро Джарвиса (при 3 мониторах), dashboard — дашборд", "select", ["core", "dashboard"], "look"),
     ("INTRO_ANIMATION", "Анимация появления на всех мониторах", "select", ["true", "false"], "look"),
     ("DASHBOARD_SCREENS", "Дашборд при запуске: all — все мониторы, main — главный, off — нет", "select", ["all", "main", "off"], "look"),
     ("MORNING_BRIEF", "Сводка дня после приветствия", "select", ["true", "false"], "look"),
@@ -96,7 +101,7 @@ SETTINGS = [
     ("WORKSPACE_URLS", "Рабочая зона: сайты через запятую", "text", "https://railway.com/dashboard,…", "look"),
     ("CONFIRM_DANGEROUS", "Спрашивать «да/нет» перед опасными действиями", "select", ["true", "false"], "look"),
 ]
-NEEDS_RESTART = {"TELEGRAM_BOT_TOKEN", "AI_PROVIDER", "INTRO_ANIMATION", "DASHBOARD_SCREENS", "PAUSE_SECONDS", "WAKE_WORDS"}
+NEEDS_RESTART = {"HOTKEY_TALK", "HOTKEY_STOP", "MAIN_SCREEN", "TELEGRAM_BOT_TOKEN", "AI_PROVIDER", "INTRO_ANIMATION", "DASHBOARD_SCREENS", "PAUSE_SECONDS", "WAKE_WORDS"}
 SECRET_KEYS = {k for k, _, kind, *_ in SETTINGS if kind == "secret"}
 
 
@@ -130,6 +135,20 @@ def _system() -> dict:
 @app.get("/")
 def index():
     return _page("index.html")
+
+
+@app.get("/core")
+def core_page():
+    return _page("core.html")
+
+
+@app.post("/api/wake")
+def wake_api():
+    """Пробел в окне Джарвиса — «слушаю»; Escape — «замолчи»."""
+    fn = BRAIN.get("stop" if request.get_json(force=True).get("stop") else "wake")
+    if fn:
+        fn()
+    return jsonify(ok=bool(fn))
 
 
 @app.get("/intro")
@@ -348,6 +367,20 @@ def run_tool():
         return jsonify(ok=False, result=f"{type(e).__name__}: {e}")
 
 
+@app.post("/api/exec")
+def exec_tool():
+    """Инструменты, которые живут в главном процессе (браузер, жесты): Claude Code зовёт их сюда через MCP."""
+    from .tools import load_all
+    d = request.get_json(force=True)
+    tool = load_all().get(d.get("name"))
+    if not tool or not tool.in_main:
+        return jsonify(ok=False, result="Нет такого инструмента"), 400
+    try:
+        return jsonify(ok=True, result=str(tool.func(**(d.get("args") or {}))))
+    except Exception as e:  # noqa: BLE001
+        return jsonify(ok=False, result=f"Ошибка: {type(e).__name__}: {e}")
+
+
 @app.get("/api/weather")
 def weather_api():
     from .tools.info import weather_data
@@ -461,7 +494,9 @@ def pending_answer(cid: str):
 
 
 # ---------- Экран Джарвиса: панели, которые он сам выводит, и вид интерфейса ----------
-SCREEN = {"rev": 0, "panels": [], "ui": {"accent": "", "effect": "", "effect_id": 0}}
+SCREEN = {"rev": 0, "panels": [],
+          "ui": {"accent": "", "effect": "", "effect_id": 0,
+                 "reactor": "sphere", "size": 1.0, "spin": 1.0, "orbit": []}}
 SCREEN_DIR = config.DATA_DIR / "screen"
 RUNNING = False
 _screen_lock = threading.Lock()
@@ -485,9 +520,16 @@ def screen_op(op: str, data: dict) -> str:
                 ui["accent"] = data["accent"]
             if data.get("effect"):
                 ui["effect"], ui["effect_id"] = data["effect"], ui["effect_id"] + 1
+            for k in ("reactor", "size", "spin"):
+                if data.get(k) is not None:
+                    ui[k] = data[k]
+            if data.get("orbit_add"):
+                ui["orbit"] = (ui["orbit"] + [data["orbit_add"]])[-6:]
+            if data.get("orbit_clear"):
+                ui["orbit"] = []
         elif op == "reset":
             panels.clear()
-            ui.update(accent="", effect="")
+            ui.update(accent="", effect="", reactor="sphere", size=1.0, spin=1.0, orbit=[])
         SCREEN["rev"] += 1
     return "ok"
 
@@ -516,6 +558,9 @@ def diag():
     from . import hearing
     d = dict(hearing.DIAG)
     d["ago"] = round(time.time() - d["last_at"]) if d.get("last_at") else None
+    d["said_ago"] = round(time.time() - d["said_at"], 1) if d.get("said_at") else None
+    from . import gestures
+    d["gestures"] = dict(gestures.STATE)
     d["stt"] = ("ElevenLabs Scribe для команд, Google для фона" if config.STT_ENGINE == "smart" else
                 "ElevenLabs Scribe" if config.STT_ENGINE == "elevenlabs" else "Google")
     if config.STT_ENGINE != "google" and not config.ELEVENLABS_API_KEY:

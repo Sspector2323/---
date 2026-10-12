@@ -32,6 +32,12 @@ def grab_screen(path):
 
 
 def grab_camera(path):
+    from .. import gestures
+    frame = gestures.last_frame() if gestures.running() else None
+    if frame is not None:  # жесты уже держат камеру — берём их кадр, второй раз камеру не открыть
+        import cv2
+        cv2.imwrite(str(path), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+        return
     try:
         import cv2
     except ImportError as e:
@@ -94,3 +100,21 @@ def look(source: str = "screen", question: str = ""):
     if answer:
         return answer
     return f"Снимок сохранён: {path}. Открой его (Read) и ответь на вопрос: {question or 'что на нём'}."
+
+
+@tool("gestures",
+      "Управление жестами перед веб-камерой: on — включить (ладонь — стоп, «победа» — слушаю, палец вверх/вниз — "
+      "да/нет, кулак — убрать панель, «люблю тебя» — режим курсора), off — выключить и освободить камеру, "
+      "pointer_on/pointer_off — водить мышью указательным пальцем, щипок — клик. Включай только по просьбе.",
+      {"action": S("on, off, pointer_on, pointer_off", enum=["on", "off", "pointer_on", "pointer_off"])},
+      ["action"], in_main=True)
+def gestures_tool(action: str):
+    from .. import gestures
+    if action == "off":
+        return gestures.stop()
+    if action in ("pointer_on", "pointer_off"):
+        msg = gestures.start() if not gestures.running() else ""
+        gestures.STATE["pointer"] = action == "pointer_on"
+        return (msg + " " if msg else "") + ("Курсор следует за указательным пальцем, щипок — клик."
+                                             if action == "pointer_on" else "Курсор снова ваш.")
+    return gestures.start()

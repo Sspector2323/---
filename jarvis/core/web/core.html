@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S. · ядро</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<style>
+  :root { --accent: #38d9ff; --text: #dcebf7; --muted: #7d93ab; --dim: #4b6178; --bg: #01040a;
+          --glass: rgba(6, 18, 34, .62); --line: rgba(56, 217, 255, .22); --warn: #fbbf24; --bad: #fb7185; --ok: #4ade80; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+               font: 15px/1.45 "Exo 2", "Segoe UI", system-ui, sans-serif; }
+  #gl { position: fixed; inset: 0; display: block; }
+  #fallback { position: fixed; inset: 0; display: none; place-items: center; }
+  #fallback .r { width: 260px; height: 260px; border-radius: 50%; border: 2px solid var(--accent);
+                 box-shadow: 0 0 60px var(--accent), inset 0 0 60px var(--accent); animation: spin 6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .vignette { position: fixed; inset: 0; pointer-events: none;
+              background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.65) 100%); }
+  .scan { position: fixed; inset: 0; pointer-events: none; opacity: .07;
+          background: repeating-linear-gradient(0deg, #fff 0 1px, transparent 1px 3px); mix-blend-mode: overlay; }
+
+  /* HUD */
+  .hud { position: fixed; pointer-events: none; }
+  .tl { top: 22px; left: 28px; } .tr { top: 22px; right: 28px; text-align: right; }
+  .bl { bottom: 22px; left: 28px; } .br { bottom: 22px; right: 28px; text-align: right; }
+  .logo { font: 700 22px/1 Orbitron, sans-serif; letter-spacing: 8px; color: var(--accent); text-shadow: 0 0 18px var(--accent); }
+  .state { margin-top: 10px; font: 500 12px/1 Orbitron, sans-serif; letter-spacing: 4px; text-transform: uppercase; color: var(--muted); }
+  .state b { color: var(--accent); font-weight: 500; }
+  .clock { font: 700 34px/1 Orbitron, sans-serif; letter-spacing: 2px; }
+  .date { color: var(--muted); margin-top: 6px; font-size: 13px; letter-spacing: 1px; }
+  .tick { color: var(--dim); font-size: 11px; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 6px; font-family: Orbitron, sans-serif; }
+
+  /* Прямой эфир слева */
+  .feed { position: fixed; left: 28px; top: 120px; width: min(360px, 28vw); pointer-events: none; }
+  .feed .now { border-left: 2px solid var(--accent); padding: 6px 10px; background: var(--glass); margin-bottom: 10px;
+               border-radius: 0 8px 8px 0; font-size: 14px; display: none; }
+  .feed .now.on { display: block; }
+  .feed ul { list-style: none; margin: 0; padding: 0; }
+  .feed li { text-shadow: 0 1px 6px #000, 0 0 2px #000; font-size: 13px; color: var(--muted); padding: 4px 0 4px 10px; border-left: 1px solid var(--line);
+             animation: fin .5s ease-out; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .feed li i { font-style: normal; color: var(--dim); margin-right: 8px; font-variant-numeric: tabular-nums; }
+  .feed li.k-error { color: var(--bad); } .feed li.k-done { color: var(--text); }
+  @keyframes fin { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+
+  /* Панели («клинки») справа */
+  .blades { position: fixed; right: 28px; top: 110px; bottom: 110px; width: min(520px, 34vw); display: flex; flex-direction: column;
+            gap: 14px; overflow: hidden; }
+  .blade { background: var(--glass); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 14px;
+           padding: 14px 16px; backdrop-filter: blur(10px); box-shadow: 0 0 30px rgba(0,0,0,.4), 0 0 18px rgba(56,217,255,.12);
+           position: relative; overflow: auto; max-height: 60vh; animation: bin .6s cubic-bezier(.2,.8,.2,1); flex-shrink: 0; }
+  .blade.k-ok { border-left-color: var(--ok); } .blade.k-warn { border-left-color: var(--warn); } .blade.k-error { border-left-color: var(--bad); }
+  .blade h3 { margin: 0 24px 8px 0; font: 600 15px/1.3 "Exo 2", sans-serif; }
+  .blade h3 small { color: var(--dim); font-weight: 400; margin-left: 8px; font-size: 11px; }
+  .blade .x { position: absolute; top: 8px; right: 10px; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 18px; }
+  .blade img { max-width: 100%; max-height: 40vh; border-radius: 10px; display: block; margin: 6px 0; }
+  .blade table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .blade th { text-align: left; color: var(--accent); font-weight: 500; border-bottom: 1px solid var(--line); padding: 4px 6px; }
+  .blade td { border-bottom: 1px solid rgba(255,255,255,.06); padding: 4px 6px; vertical-align: top; }
+  .blade h1, .blade h2 { font-size: 13px; color: var(--accent); margin: 10px 0 4px; letter-spacing: 1px; }
+  .blade p { margin: 4px 0 8px; } .blade ul, .blade ol { margin: 4px 0 8px; padding-left: 20px; }
+  .blade a { color: var(--accent); }
+  .blade .callout { border-left: 3px solid var(--accent); padding: 4px 10px; background: rgba(56,217,255,.06); border-radius: 0 8px 8px 0; }
+  .blade pre { white-space: pre-wrap; background: rgba(0,0,0,.35); padding: 8px; border-radius: 8px; font-size: 12px; }
+  @keyframes bin { from { opacity: 0; transform: translateX(40px) skewX(-6deg); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+
+  /* Субтитры */
+  .captions { position: fixed; left: 50%; bottom: 70px; transform: translateX(-50%); width: min(900px, 60vw); text-align: center; pointer-events: none; }
+  .cap { opacity: 0; transition: opacity .6s; margin-top: 8px; font-size: 18px; text-shadow: 0 2px 12px #000; }
+  .cap.on { opacity: 1; }
+  .cap.you { color: var(--muted); font-size: 15px; } .cap.you b { color: var(--dim); font-weight: 500; }
+  .cap.him b { color: var(--accent); font-weight: 600; font-family: Orbitron, sans-serif; font-size: 12px; letter-spacing: 3px; margin-right: 8px; }
+  .suggest { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); color: var(--dim); font-size: 13px; transition: opacity .6s; white-space: nowrap; }
+  .suggest b { color: var(--muted); font-weight: 500; }
+
+  .status { font-size: 12px; color: var(--muted); line-height: 1.7; }
+  .status .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dim); margin-right: 6px; vertical-align: middle; }
+  .status .dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .status .dot.cam { background: var(--bad); box-shadow: 0 0 8px var(--bad); animation: blink 1.6s infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  .orbit-img { position: fixed; left: 0; top: 0; width: 180px; border-radius: 12px; border: 1px solid var(--line);
+               box-shadow: 0 0 24px rgba(56,217,255,.25); pointer-events: none; will-change: transform; }
+
+  .nav { position: fixed; top: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; }
+  .nav a { pointer-events: auto; color: var(--muted); text-decoration: none; font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
+           border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; background: var(--glass); }
+  .nav a:hover { color: var(--text); border-color: var(--accent); }
+
+  /* эффекты */
+  body.fx-flash::after { content: ""; position: fixed; inset: 0; background: var(--accent); pointer-events: none; animation: fxflash .7s ease-out forwards; }
+  body.fx-shake #gl { animation: fxshake .5s; }
+  body.fx-scan::before { content: ""; position: fixed; left: 0; right: 0; height: 160px; pointer-events: none; z-index: 5;
+    background: linear-gradient(transparent, rgba(56,217,255,.25), transparent); animation: fxscan 1.4s linear; }
+  @keyframes fxflash { from { opacity: .35; } to { opacity: 0; } }
+  @keyframes fxscan { from { top: -160px; } to { top: 100vh; } }
+  @keyframes fxshake { 0%,100% { transform: none; } 25% { transform: translateX(-8px); } 50% { transform: translateX(8px); } 75% { transform: translateX(-4px); } }
+  @media (max-width: 900px) { .feed, .blades { display: none; } .captions { width: 90vw; } }
+  @media (prefers-reduced-motion: reduce) { body[class*="fx-"]::after, body[class*="fx-"]::before, body.fx-shake #gl { animation: none !important; } }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="fallback"><div class="r"></div></div>
+<div class="vignette"></div><div class="scan"></div>
+
+<div class="hud tl"><div class="logo">J.A.R.V.I.S.</div><div class="state" id="state">ядро · <b>запуск</b></div></div>
+<div class="hud tr"><div class="clock" id="clock">--:--</div><div class="date" id="date"></div></div>
+<nav class="nav"><a href="/?view=work">Работа</a><a href="/?view=life">Личное</a><a href="/">Дашборд</a></nav>
+
+<div class="feed"><div class="tick">Прямой эфир</div><div class="now" id="now"></div><ul id="feed"></ul></div>
+<div class="blades" id="blades"></div>
+<div id="orbits"></div>
+
+<div class="captions"><div class="cap you" id="capYou"></div><div class="cap him" id="capHim"></div></div>
+<div class="suggest" id="suggest"></div>
+<div class="hud bl status" id="status"></div>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const api = (url, opts = {}) => fetch(url, {headers: {"Content-Type": "application/json", "X-Jarvis-Token": TOKEN}, ...opts}).then(r => r.json());
+const post = (url, body) => api(url, {method: "POST", body: JSON.stringify(body || {})});
+
+// Общее состояние для 3D-сцены (её модуль читает window.JV)
+window.JV = {mode: "idle", accent: "#38d9ff", reactor: "sphere", size: 1, spin: 1, orbit: [], pulse: 0};
+
+// ---------- Часы ----------
+function tick() {
+  const d = new Date();
+  $("clock").textContent = d.toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"});
+  $("date").textContent = d.toLocaleDateString("ru-RU", {weekday: "long", day: "numeric", month: "long"});
+}
+tick(); setInterval(tick, 5000);
+
+// ---------- Слух, субтитры, состояние ----------
+let BUSY = false;
+const MODES = {idle: "ожидаю", listen: "слушаю", think: "думаю", speak: "говорю"};
+async function pollDiag() {
+  try {
+    const d = await api("/api/diag");
+    const speaking = d.state === "говорю";
+    JV.mode = speaking ? "speak" : BUSY ? "think" : (d.ago != null && d.ago < 2) ? "listen" : "idle";
+    $("state").innerHTML = `ядро · <b>${MODES[JV.mode]}</b>`;
+    const you = $("capYou"), him = $("capHim");
+    if (d.last_text && d.ago != null && d.ago < 12) { you.innerHTML = `<b>Вы:</b> ${esc(d.last_text)}`; you.classList.add("on"); }
+    else you.classList.remove("on");
+    if (d.last_said && (speaking || (d.said_ago != null && d.said_ago < 10))) {
+      him.innerHTML = `<b>JARVIS</b>${esc(d.last_said.length > 260 ? d.last_said.slice(0, 260) + "…" : d.last_said)}`; him.classList.add("on");
+    } else him.classList.remove("on");
+    const g = d.gestures || {};
+    $("status").innerHTML = `
+      <div><span class="dot on"></span>микрофон · порог ${d.threshold || "—"}</div>
+      <div><span class="dot ${g.on ? "cam" : ""}"></span>${g.on ? `камера: жесты${g.gesture ? " · " + esc(g.gesture) : g.hand ? " · рука в кадре" : ""}${g.pointer ? " · курсор" : ""}` : "жесты выключены"}</div>
+      <div><span class="dot ${d.claps ? "on" : ""}"></span>двойной хлопок — слушаю</div>`;
+  } catch {}
+}
+pollDiag(); setInterval(pollDiag, 500);
+
+// ---------- Прямой эфир ----------
+let LAST = 0, EVENTS = [];
+const ICON = {task: "🎯", tool: "⚙", done: "✓", error: "✕", think: "…", confirm: "?", answer: "›", voice: "🎙", system: "◇"};
+async function pollFeed() {
+  try {
+    const r = await api(`/api/activity?after=${LAST}`);
+    if (r.events.length) {
+      EVENTS.push(...r.events); EVENTS = EVENTS.slice(-9); LAST = r.events[r.events.length - 1].id;
+      $("feed").innerHTML = EVENTS.slice().reverse().map(e =>
+        `<li class="k-${esc(e.kind)}"><i>${esc(e.ts.slice(11, 16))}</i>${ICON[e.kind] || "•"} ${esc(e.title)}</li>`).join("");
+      if (r.events.some(e => e.kind === "error")) JV.pulse = -1;
+      else if (r.events.some(e => e.kind === "tool")) JV.pulse = 1;
+    }
+    BUSY = !!r.current;
+    const now = $("now");
+    now.classList.toggle("on", BUSY);
+    if (BUSY) now.textContent = `${r.current.title} · ${Math.round(r.current.elapsed)} с`;
+  } catch {}
+}
+pollFeed(); setInterval(pollFeed, 800);
+
+// ---------- Панели и вид ----------
+let REV = -1, FX = 0;
+function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(","); }
+function blade(p) {
+  const img = p.image ? `<img src="${esc(p.image)}" alt="" referrerpolicy="no-referrer">` : "";
+  const link = p.link ? `<p><a href="${esc(p.link)}" target="_blank" rel="noopener noreferrer">Открыть ↗</a></p>` : "";
+  // html собран на сервере из markdown с экранированием
+  return `<article class="blade k-${esc(p.kind)}"><button class="x" onclick="closeBlade('${esc(p.id)}')">×</button>
+    <h3>${esc(p.title)}<small>${esc(p.at)}</small></h3>${img}${p.html || ""}${link}</article>`;
+}
+async function closeBlade(id) { await post("/api/screen", {op: "close", data: {id}}); pollScreen(); }
+async function pollScreen() {
+  try {
+    const s = await api("/api/screen");
+    if (s.rev === REV) return;
+    REV = s.rev;
+    $("blades").innerHTML = s.panels.slice(0, 3).map(blade).join("");
+    const ui = s.ui, acc = ui.accent || "#38d9ff";
+    document.documentElement.style.setProperty("--accent", acc);
+    document.documentElement.style.setProperty("--line", `rgba(${hexRgb(acc)},.22)`);
+    Object.assign(JV, {accent: acc, reactor: ui.reactor || "sphere", size: +ui.size || 1, spin: ui.spin ?? 1});
+    syncOrbits(ui.orbit || []);
+    if (ui.effect && ui.effect_id !== FX) {
+      const first = FX === 0; FX = ui.effect_id;
+      if (!first) {
+        JV.effect = ui.effect; JV.effectAt = performance.now();
+        document.body.classList.add("fx-" + ui.effect);
+        setTimeout(() => document.body.classList.remove("fx-" + ui.effect), 1500);
+      }
+    }
+  } catch {}
+}
+pollScreen(); setInterval(pollScreen, 1000);
+
+// Картинки на орбите — HTML-картинки, которые 3D-сцена двигает по кругу вокруг ядра
+function syncOrbits(list) {
+  const box = $("orbits");
+  if (box.dataset.k === list.join("|")) return;
+  box.dataset.k = list.join("|");
+  box.innerHTML = list.map(u => `<img class="orbit-img" src="${esc(u)}" alt="" referrerpolicy="no-referrer">`).join("");
+  JV.orbit = [...box.querySelectorAll("img")];
+}
+
+// ---------- Подсказки ----------
+const SUGGEST = ["Джарвис, сделай интерфейс красным", "Джарвис, включи жесты", "Ладонь в камеру — стоп",
+  "Джарвис, открой в браузере мою почту", "Джарвис, что у меня на экране?", "Хлопните дважды — и говорите",
+  "Ctrl+Alt+J — слушаю, Ctrl+Alt+X — замолчи", "Пробел — слушаю, Escape — тишина",
+  "Джарвис, поставь ядро в режим реактора", "Джарвис, выведи задачи из Notion на экран"];
+let SG = Math.floor(Math.random() * SUGGEST.length);
+function suggest() {
+  const el = $("suggest");
+  el.style.opacity = JV.mode === "idle" ? 1 : 0;
+  if (JV.mode === "idle") el.innerHTML = `Попробуйте: <b>«${esc(SUGGEST[SG++ % SUGGEST.length])}»</b>`;
+}
+suggest(); setInterval(suggest, 7000);
+
+// ---------- Пробел — слушаю, Escape — замолчи ----------
+addEventListener("keydown", e => {
+  if (e.target.closest && e.target.closest("input, textarea")) return;
+  if (e.code === "Space") { e.preventDefault(); post("/api/wake", {}); }
+  if (e.code === "Escape") post("/api/wake", {stop: true});
+});
+</script>
+
+<script type="module">
+// ---------- 3D-сцена: ядро, кольца, частицы ----------
+import * as THREE from "three";
+import {EffectComposer} from "three/addons/postprocessing/EffectComposer.js";
+import {RenderPass} from "three/addons/postprocessing/RenderPass.js";
+import {UnrealBloomPass} from "three/addons/postprocessing/UnrealBloomPass.js";
+
+const JV = window.JV;
+const canvas = document.getElementById("gl");
+const renderer = new THREE.WebGLRenderer({canvas, antialias: true, powerPreference: "high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x01040a, 0.035);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
+camera.position.set(0, 0.6, 13);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.9, 0.55, 0.12);
+composer.addPass(bloom);
+
+const accent = new THREE.Color(JV.accent);
+const uniforms = {uTime: {value: 0}, uColor: {value: accent.clone()}, uAmp: {value: 0.12}, uGlow: {value: 1}};
+
+// Ядро: сфера с «дышащей» поверхностью и свечением по краю (френель)
+const coreMat = new THREE.ShaderMaterial({
+  uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `
+    uniform float uTime; uniform float uAmp;
+    varying vec3 vN; varying vec3 vV; varying float vD;
+    float wave(vec3 p) {
+      return sin(p.x * 3.1 + uTime * 1.7) * sin(p.y * 2.7 + uTime * 1.3) * sin(p.z * 3.4 + uTime * 0.9)
+           + 0.5 * sin(p.x * 7.0 - uTime * 2.3) * sin(p.y * 6.0 + uTime * 1.1);
+    }
+    void main() {
+      float d = wave(position) * uAmp;
+      vD = d;
+      vec3 p = position + normal * d;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform vec3 uColor; uniform float uGlow; uniform float uTime;
+    varying vec3 vN; varying vec3 vV; varying float vD;
+    void main() {
+      float f = pow(1.0 - max(dot(vN, vV), 0.0), 2.2);
+      float core = pow(max(dot(vN, vV), 0.0), 10.0);
+      // «силовые линии» по поверхности — чтобы сфера читалась как энергия, а не как пятно
+      float bands = smoothstep(0.82, 1.0, abs(sin(vD * 40.0 + uTime * 0.8)));
+      vec3 c = uColor * (0.08 + f * 1.25 + max(vD, 0.0) * 1.2 + bands * 0.35) * uGlow + vec3(1.0) * core * 0.22 * uGlow;
+      gl_FragColor = vec4(c, 0.22 + f * 0.7);
+    }`,
+});
+const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.6, 64), coreMat);
+scene.add(core);
+
+// Каркас (режим wire)
+const wire = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(2.0, 2)),
+  new THREE.LineBasicMaterial({color: accent, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending}));
+scene.add(wire);
+
+// Дуговой реактор (режим ring): толстое кольцо + треугольник + сегменты
+const reactor = new THREE.Group();
+const torus = new THREE.Mesh(new THREE.TorusGeometry(1.9, 0.12, 24, 160),
+  new THREE.MeshBasicMaterial({color: accent, transparent: true, opacity: 0.9}));
+reactor.add(torus);
+const tri = new THREE.BufferGeometry().setFromPoints([0, 1, 2, 0].map(i => {
+  const a = Math.PI / 2 + i * Math.PI * 2 / 3; return new THREE.Vector3(Math.cos(a) * 1.35, Math.sin(a) * 1.35, 0); }));
+reactor.add(new THREE.Line(tri, new THREE.LineBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.9})));
+for (let i = 0; i < 10; i++) {  // сегменты-катушки по кругу
+  const seg = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.5, 0.08), new THREE.MeshBasicMaterial({color: accent, transparent: true, opacity: 0.75}));
+  const a = i / 10 * Math.PI * 2; seg.position.set(Math.cos(a) * 2.35, Math.sin(a) * 2.35, 0); seg.rotation.z = a;
+  reactor.add(seg);
+}
+scene.add(reactor);
+
+// HUD-кольца: штриховые окружности, наклонённые в разные стороны
+function dashedRing(r, segs, gap, width = 1) {
+  const pts = [];
+  for (let i = 0; i < segs; i++) {
+    const a0 = i / segs * Math.PI * 2, a1 = (i + 1 - gap) / segs * Math.PI * 2;
+    for (let k = 0; k < 6; k++) {
+      const t0 = a0 + (a1 - a0) * k / 6, t1 = a0 + (a1 - a0) * (k + 1) / 6;
+      pts.push(new THREE.Vector3(Math.cos(t0) * r, Math.sin(t0) * r, 0), new THREE.Vector3(Math.cos(t1) * r, Math.sin(t1) * r, 0));
+    }
+  }
+  return new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({color: accent, transparent: true, opacity: 0.6 * width, blending: THREE.AdditiveBlending}));
+}
+function ticks(r, n, len) {
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = i / n * Math.PI * 2, l = i % 5 === 0 ? len * 2 : len;
+    pts.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, 0), new THREE.Vector3(Math.cos(a) * (r + l), Math.sin(a) * (r + l), 0));
+  }
+  return new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({color: accent, transparent: true, opacity: 0.45}));
+}
+const rings = [
+  {o: dashedRing(2.9, 48, 0.35), ax: [0, 0, 1], sp: 0.12, tilt: [0.0, 0.0]},
+  {o: ticks(3.4, 120, 0.12), ax: [0, 0, 1], sp: -0.05, tilt: [0.0, 0.0]},
+  {o: dashedRing(3.9, 6, 0.18, 1.2), ax: [0, 0, 1], sp: -0.2, tilt: [1.15, 0.2]},
+  {o: dashedRing(4.4, 3, 0.4, 0.9), ax: [0, 0, 1], sp: 0.16, tilt: [-0.9, 0.6]},
+  {o: dashedRing(5.2, 90, 0.6, 0.6), ax: [0, 0, 1], sp: 0.03, tilt: [1.45, -0.3]},
+];
+const ringGroup = new THREE.Group();
+rings.forEach(r => { const g = new THREE.Group(); g.rotation.set(r.tilt[0], r.tilt[1], 0); g.add(r.o); r.g = g; ringGroup.add(g); });
+scene.add(ringGroup);
+
+// Частицы: облако вокруг ядра — при «слушаю» стягивается, при «думаю» закручивается быстрее
+const N = 3800, pos = new Float32Array(N * 3), seed = new Float32Array(N);
+for (let i = 0; i < N; i++) {
+  const r = 2.6 + Math.pow(Math.random(), 0.7) * 9, th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+  pos.set([r * Math.sin(ph) * Math.cos(th), r * Math.cos(ph) * 0.55, r * Math.sin(ph) * Math.sin(th)], i * 3);
+  seed[i] = Math.random();
+}
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+pGeo.setAttribute("seed", new THREE.BufferAttribute(seed, 1));
+const pUni = {uTime: {value: 0}, uColor: uniforms.uColor, uPull: {value: 0}, uSwirl: {value: 0}};
+const particles = new THREE.Points(pGeo, new THREE.ShaderMaterial({
+  uniforms: pUni, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `
+    uniform float uTime; uniform float uPull; uniform float uSwirl; attribute float seed; varying float vA;
+    void main() {
+      vec3 p = position;
+      float r = length(p.xz);
+      float a = uSwirl / max(r, 1.0) + seed * 6.2831;
+      float s = sin(a), c = cos(a);
+      p.xz = mat2(c, -s, s, c) * p.xz;
+      p *= 1.0 - uPull * (0.35 + 0.25 * seed);
+      p.y += sin(uTime * 0.6 + seed * 20.0) * 0.15;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      gl_PointSize = min(6.0, (0.7 + seed * 1.6) * (20.0 / -mv.z));
+      vA = 0.35 + 0.65 * abs(sin(uTime * (0.8 + seed) + seed * 40.0));
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform vec3 uColor; varying float vA;
+    void main() {
+      float d = length(gl_PointCoord - 0.5);
+      if (d > 0.5) discard;
+      gl_FragColor = vec4(uColor, (1.0 - d * 2.0) * vA * 0.55);
+    }`,
+}));
+scene.add(particles);
+
+// ---------- Анимация ----------
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false); composer.setSize(w, h); bloom.setSize(w, h);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize); resize();
+
+const clock = new THREE.Clock();
+let swirl = 0, pull = 0, glow = 1, amp = 0.12, scale = 1, flare = 0;
+const target = new THREE.Color();
+const tmp = new THREE.Vector3();
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+  const m = JV.mode, spin = JV.spin ?? 1;
+  // плавно подстраиваемся под состояние
+  const want = {idle: [0.10, 0, 0.9, 0.35], listen: [0.16, 0.45, 1.25, 0.6], think: [0.24, 0.1, 1.1, 1.8], speak: [0.2, 0.15, 1.35, 0.9]}[m] || [0.1, 0, 1, 0.35];
+  let speakAmp = want[0];
+  if (m === "speak") speakAmp += 0.12 * Math.abs(Math.sin(t * 9.0) * Math.sin(t * 3.7 + 1.3));  // «голос» ядра
+  amp += (speakAmp - amp) * Math.min(1, dt * 8);
+  pull += (want[1] - pull) * Math.min(1, dt * 2);
+  glow += (want[2] - glow) * Math.min(1, dt * 3);
+  swirl += dt * want[3] * spin;
+  if (JV.pulse) { flare = JV.pulse; JV.pulse = 0; }
+  flare *= Math.pow(0.15, dt);
+  if (JV.effect && performance.now() - JV.effectAt < 1200) {
+    if (JV.effect === "glitch") core.position.x = (Math.random() - 0.5) * 0.3; else core.position.x = 0;
+    if (JV.effect === "pulse") flare = Math.max(flare, 1);
+  } else core.position.x = 0;
+
+  target.set(flare < -0.05 ? "#ff3b4e" : JV.accent);
+  uniforms.uColor.value.lerp(target, Math.min(1, dt * 4));
+  const col = uniforms.uColor.value;
+  [wire, torus].forEach(o => o.material.color.copy(col));
+  reactor.children.forEach(o => { if (o.material && o !== torus && o.type === "Mesh") o.material.color.copy(col); });
+  rings.forEach(r => r.o.material.color.copy(col));
+
+  uniforms.uTime.value = t; uniforms.uAmp.value = amp; uniforms.uGlow.value = glow + Math.abs(flare) * 0.8;
+  pUni.uTime.value = t; pUni.uPull.value = pull; pUni.uSwirl.value = swirl;
+
+  const style = JV.reactor;
+  core.visible = style !== "wire"; wire.visible = style === "wire"; reactor.visible = style === "ring";
+  scale += ((JV.size || 1) - scale) * Math.min(1, dt * 3);
+  core.scale.setScalar((style === "ring" ? 0.55 : 1) * scale * (1 + Math.abs(flare) * 0.08));
+  wire.scale.setScalar(scale); reactor.scale.setScalar(scale); ringGroup.scale.setScalar(scale);
+  core.rotation.y += dt * 0.15 * spin; wire.rotation.y += dt * 0.3 * spin; wire.rotation.x += dt * 0.12 * spin;
+  reactor.rotation.z -= dt * 0.25 * spin;
+  rings.forEach(r => { r.o.rotation.z += dt * r.sp * spin * (m === "think" ? 3 : 1); });
+  particles.rotation.y += dt * 0.02 * spin;
+  camera.position.x = Math.sin(t * 0.07) * 1.2; camera.position.y = 0.6 + Math.sin(t * 0.05) * 0.4;
+  camera.lookAt(0, 0, 0);
+  bloom.strength = 0.85 + (glow - 1) * 0.6 + Math.abs(flare) * 0.5;
+
+  // картинки на орбите: проецируем 3D-точку орбиты на экран и двигаем HTML-картинку
+  const imgs = JV.orbit || [];
+  imgs.forEach((img, i) => {
+    const a = t * 0.25 * spin + i / imgs.length * Math.PI * 2;
+    tmp.set(Math.cos(a) * 6.2 * scale, Math.sin(a * 0.7) * 0.8, Math.sin(a) * 3.2 * scale).project(camera);
+    const x = (tmp.x * 0.5 + 0.5) * innerWidth, y = (-tmp.y * 0.5 + 0.5) * innerHeight;
+    const depth = Math.sin(a), s = 0.6 + 0.4 * (depth * 0.5 + 0.5);
+    img.style.transform = `translate(${x - 90}px, ${y - 60}px) scale(${s})`;
+    img.style.opacity = 0.45 + 0.55 * (depth * 0.5 + 0.5);
+    img.style.zIndex = depth > 0 ? 3 : 0;
+  });
+
+  composer.render();
+  requestAnimationFrame(frame);
+}
+frame();
+window.JV.ready = true;
+</script>
+<script>
+// если 3D не загрузилось (нет интернета для библиотеки или WebGL) — простое кольцо вместо сцены
+setTimeout(() => { if (!window.JV.ready) document.getElementById("fallback").style.display = "grid"; }, 6000);
+</script>
+</body>
+</html>

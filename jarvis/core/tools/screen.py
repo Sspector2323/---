@@ -90,14 +90,22 @@ def show_on_screen(title: str, content: str = "", image: str = "", link: str = "
 
 
 @tool("ui_control",
-      "Управлять видом интерфейса Джарвиса: цвет подсветки (accent: синий, красный, зелёный, золотой, фиолетовый, "
+      "Управлять видом интерфейса Джарвиса (дашборд и 3D-ядро): цвет подсветки (accent: синий, красный, зелёный, золотой, фиолетовый, "
       "оранжевый, розовый, белый или #hex; «обычный» — вернуть), эффект (pulse, glitch, scan, flash, shake), "
       "убрать все панели с экрана (clear=true) или сбросить всё (reset=true). Красный — тревога или важное, "
       "зелёный — всё хорошо. Применяй, когда просят, или чтобы подчеркнуть важный момент — но без злоупотребления.",
       {"accent": S("Цвет подсветки"), "effect": S("Эффект", enum=sorted(EFFECTS)),
+       "reactor": S("Вид ядра на 3D-экране: sphere (сфера), ring (дуговой реактор), wire (каркас)",
+                    enum=["sphere", "ring", "wire"]),
+       "size": {"type": "number", "description": "Размер ядра, 0.5–2 (1 — обычный)"},
+       "spin": {"type": "number", "description": "Скорость вращения, 0–3 (1 — обычная)"},
+       "orbit_image": S("Картинка (https://… или файл), которая будет кружить вокруг ядра"),
+       "orbit_clear": {"type": "boolean", "description": "Убрать картинки с орбиты"},
        "clear": {"type": "boolean", "description": "Убрать все панели"},
        "reset": {"type": "boolean", "description": "Вернуть интерфейс по умолчанию"}})
-def ui_control(accent: str = "", effect: str = "", clear: bool = False, reset: bool = False):
+def ui_control(accent: str = "", effect: str = "", clear: bool = False, reset: bool = False, reactor: str = "",
+               size: float | None = None, spin: float | None = None, orbit_image: str = "",
+               orbit_clear: bool = False):
     if reset:
         return "Интерфейс по умолчанию." if _push("reset", {}) == "ok" else "Дашборд недоступен."
     done = []
@@ -123,6 +131,24 @@ def ui_control(accent: str = "", effect: str = "", clear: bool = False, reset: b
             return f"Эффекты: {', '.join(sorted(EFFECTS))}."
         data["effect"] = effect
         done.append(f"эффект {effect}")
+    if reactor in ("sphere", "ring", "wire"):
+        data["reactor"] = reactor
+        done.append("вид ядра изменён")
+    if size is not None:
+        data["size"] = min(2.0, max(0.5, float(size)))
+        done.append("размер ядра изменён")
+    if spin is not None:
+        data["spin"] = min(3.0, max(0.0, float(spin)))
+        done.append("скорость вращения изменена")
+    if orbit_image:
+        img = stage_image(orbit_image)
+        if not img:
+            return "Картинку не нашёл: нужна ссылка https://… или файл с компьютера."
+        data["orbit_add"] = img
+        done.append("картинка на орбите")
+    if orbit_clear:
+        data["orbit_clear"] = True
+        done.append("орбита очищена")
     if data:
         res = _push("ui", data)
         if res != "ok":

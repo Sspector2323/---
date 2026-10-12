@@ -100,6 +100,19 @@ CLAP_WAKE = _bool("CLAP_WAKE", True)
 SOUNDS = _bool("SOUNDS", True)
 # Фразы, пока он думает: one — одна короткая и тишина; chatty — болтает каждые несколько секунд; off — молча
 FILLERS = (os.getenv("FILLERS", "one") or "one").strip().lower()
+# Браузер, которым управляет Джарвис: msedge (есть в каждой Windows) или chrome. Профиль — свой, data/browser_profile
+BROWSER_CHANNEL = (os.getenv("BROWSER_CHANNEL", "msedge") or "msedge").strip().lower()
+BROWSER_PATH = os.getenv("BROWSER_PATH", "").strip().strip('"')  # свой путь к msedge.exe/chrome.exe, если нужно
+BROWSER_HEADLESS = _bool("BROWSER_HEADLESS", False)  # без окна — только для проверок
+# Музыка: boot — заставка при запуске; all — ещё и тихий фон во время долгой задачи; off — без музыки
+MUSIC = (os.getenv("MUSIC", "boot") or "boot").strip().lower()
+# Горячие клавиши: «слушаю» и «замолчи» (пусто — выключено)
+HOTKEY_TALK = os.getenv("HOTKEY_TALK", "ctrl+alt+j").strip().lower()
+HOTKEY_STOP = os.getenv("HOTKEY_STOP", "ctrl+alt+x").strip().lower()
+# Жесты перед камерой включаются сами при запуске (иначе — голосом: «Джарвис, включи жесты»)
+GESTURES = _bool("GESTURES", False)
+# Главный монитор: core — 3D-ядро Джарвиса (при трёх и более мониторах), dashboard — обычный дашборд
+MAIN_SCREEN = (os.getenv("MAIN_SCREEN", "core") or "core").strip().lower()
 # Модель OpenAI, которая смотрит на экран и в камеру (инструмент look)
 VISION_MODEL = os.getenv("VISION_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
 # Сколько секунд тишины считать концом фразы (больше — можно делать паузы, не боясь, что Джарвис перебьёт)
