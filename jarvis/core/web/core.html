@@ -149,7 +149,7 @@ async function pollDiag() {
   try {
     const d = await api("/api/diag");
     const speaking = d.state === "говорю";
-    JV.mode = speaking ? "speak" : BUSY ? "think" : (d.ago != null && d.ago < 2) ? "listen" : "idle";
+    JV.mode = speaking ? "speak" : (BUSY || d.state === "думаю") ? "think" : d.state === "слушаю" ? "listen" : "idle";
     $("state").innerHTML = `ядро · <b>${MODES[JV.mode]}</b>`;
     const you = $("capYou"), him = $("capHim");
     if (d.last_text && d.ago != null && d.ago < 12) { you.innerHTML = `<b>Вы:</b> ${esc(d.last_text)}`; you.classList.add("on"); }

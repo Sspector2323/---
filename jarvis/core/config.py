@@ -69,7 +69,9 @@ VOICE_PRESETS = {
     "дворецкий": ("onyx", "-12Hz",
                   "Голос: низкий, глубокий, бархатный мужской баритон — тёплый, обволакивающий, уверенный. "
                   "Темп: чуть быстрее обычного, собранно, без затянутых пауз. "
-                  "Манера: безупречный британский дворецкий — спокойно, учтиво, с едва заметной иронией. Говори по-русски."),
+                  "Манера: безупречный британский дворецкий — учтиво, с лёгкой иронией и теплом. Интонация живая и "
+                  "выразительная: улыбка в голосе, акценты на главном, естественные паузы — никакой монотонности. "
+                  "Говори по-русски."),
     "хриплый бас": ("onyx", "-18Hz",
                     "Голос: низкий мужской бас-баритон с хрипотцой и лёгкой песочной шероховатостью, как после долгой "
                     "дороги. Интонация: расслабленная, уверенная, чуть дерзкая, с усмешкой — по-свойски, но с уважением. "
@@ -113,6 +115,23 @@ HOTKEY_STOP = os.getenv("HOTKEY_STOP", "ctrl+alt+x").strip().lower()
 GESTURES = _bool("GESTURES", False)
 # Главный монитор: core — 3D-ядро Джарвиса (при трёх и более мониторах), dashboard — обычный дашборд
 MAIN_SCREEN = (os.getenv("MAIN_SCREEN", "core") or "core").strip().lower()
+# Голос: realtime — живой разговор через OpenAI Realtime (мгновенно, с интонацией, можно перебивать);
+# classic — прежняя схема: распознавание → мозг → озвучка
+VOICE_MODE = (os.getenv("VOICE_MODE", "realtime") or "realtime").strip().lower()
+REALTIME_MODEL = os.getenv("REALTIME_MODEL", "gpt-realtime").strip() or "gpt-realtime"
+REALTIME_VOICE = os.getenv("REALTIME_VOICE", "cedar").strip() or "cedar"   # cedar — низкий бархатный мужской
+REALTIME_SPEED = float(os.getenv("REALTIME_SPEED", "1.0") or 1.0)
+REALTIME_VAD = (os.getenv("REALTIME_VAD", "semantic") or "semantic").strip().lower()  # semantic — даёт договорить
+REALTIME_EAGERNESS = (os.getenv("REALTIME_EAGERNESS", "medium") or "medium").strip().lower()
+REALTIME_NOISE = (os.getenv("REALTIME_NOISE", "far_field") or "far_field").strip().lower()  # near_field — гарнитура
+REALTIME_ECHO_GATE = _bool("REALTIME_ECHO_GATE", True)  # false — если вы в наушниках
+REALTIME_IDLE = float(os.getenv("REALTIME_IDLE", "25") or 25)  # секунд тишины до «сна»
+# Уведомления Windows: напоминания, готовые задачи, задачи из чатов
+NOTIFICATIONS = _bool("NOTIFICATIONS", True)
+# Плавающий Джарвис поверх всех окон (шар в углу экрана) и значок в трее
+ORB = _bool("ORB", True)
+TRAY = _bool("TRAY", True)
+HOTKEY_PALETTE = os.getenv("HOTKEY_PALETTE", "ctrl+alt+space").strip().lower()
 # Модель OpenAI, которая смотрит на экран и в камеру (инструмент look)
 VISION_MODEL = os.getenv("VISION_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
 # Сколько секунд тишины считать концом фразы (больше — можно делать паузы, не боясь, что Джарвис перебьёт)

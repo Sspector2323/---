@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>J.A.R.V.I.S.</title>
+<style>
+  :root { --accent: #38d9ff; --text: #dcebf7; --muted: #8aa1b8; --glass: rgba(4, 12, 24, .86); --line: rgba(56,217,255,.25); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; color: var(--text);
+               font: 14px/1.45 "Segoe UI", system-ui, sans-serif; user-select: none; }
+  #orb { position: absolute; right: 0; bottom: 0; width: 150px; height: 150px; cursor: pointer; }
+  .panel { position: absolute; inset: 0 0 150px 0; display: none; flex-direction: column; gap: 10px; padding: 14px;
+           background: var(--glass); border: 1px solid var(--line); border-radius: 22px; backdrop-filter: blur(16px);
+           box-shadow: 0 10px 40px rgba(0,0,0,.5), 0 0 30px rgba(56,217,255,.12); animation: rise .35s cubic-bezier(.2,.9,.2,1); }
+  body.big .panel { display: flex; }
+  @keyframes rise { from { opacity: 0; transform: translateY(18px) scale(.96); } to { opacity: 1; transform: none; } }
+  .head { display: flex; align-items: center; gap: 10px; }
+  .head b { font: 700 13px/1 "Segoe UI", sans-serif; letter-spacing: 4px; color: var(--accent); }
+  .head .st { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .head button { background: none; border: 0; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 4px; }
+  .chat { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+  .msg { max-width: 88%; padding: 8px 11px; border-radius: 14px; animation: rise .3s ease-out; white-space: pre-wrap; user-select: text; }
+  .msg.you { align-self: flex-end; background: rgba(255,255,255,.08); border-bottom-right-radius: 4px; }
+  .msg.him { align-self: flex-start; background: rgba(56,217,255,.1); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .msg.sys { align-self: center; color: var(--muted); font-size: 12px; }
+  .peek { border-left: 3px solid var(--accent); background: rgba(56,217,255,.06); border-radius: 0 10px 10px 0; padding: 8px 10px;
+          max-height: 150px; overflow: auto; font-size: 13px; user-select: text; }
+  .peek h4 { margin: 0 0 4px; font-size: 13px; }
+  .peek table { border-collapse: collapse; width: 100%; } .peek td, .peek th { padding: 2px 4px; text-align: left; border-bottom: 1px solid rgba(255,255,255,.06); }
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .quick button { background: rgba(56,217,255,.08); border: 1px solid var(--line); color: var(--text); border-radius: 999px;
+                  padding: 5px 11px; font-size: 12px; cursor: pointer; transition: all .2s; }
+  .quick button:hover { background: rgba(56,217,255,.2); box-shadow: 0 0 14px rgba(56,217,255,.35); }
+  .ask { border: 1px solid #fbbf24; background: rgba(251,191,36,.08); border-radius: 12px; padding: 10px; font-size: 13px;
+         animation: rise .3s ease-out; user-select: text; }
+  .ask .row { display: flex; gap: 8px; margin-top: 8px; }
+  .ask button { flex: 1; border: 0; border-radius: 10px; padding: 8px; font-weight: 600; cursor: pointer; }
+  #yes { background: #4ade80; color: #04210f; } #no { background: rgba(255,255,255,.1); color: var(--text); }
+  form { display: flex; gap: 8px; }
+  input { flex: 1; background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 12px; color: var(--text);
+          padding: 10px 12px; font: inherit; outline: none; user-select: text; }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(56,217,255,.15); }
+  form button { background: var(--accent); color: #001018; border: 0; border-radius: 12px; padding: 0 14px; font-weight: 600; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="panel" id="panel">
+  <div class="head"><b>JARVIS</b><span class="st" id="st">на связи</span><button id="min" title="Свернуть">–</button></div>
+  <div class="chat" id="chat"><div class="msg sys">Клик по шару — говорите. Или напишите здесь.</div></div>
+  <div class="ask" id="ask" hidden><div id="askq"></div>
+    <div class="row"><button id="yes">Разрешить</button><button id="no">Отклонить</button></div></div>
+  <div class="peek" id="peek" hidden></div>
+  <div class="quick">
+    <button data-a="wake">🎙 Говорить</button><button data-a="stop">✋ Тихо</button>
+    <button data-a="core">◎ Ядро</button><button data-a="dash">▦ Дашборд</button>
+    <button data-q="Включи жесты">✌ Жесты</button><button data-q="Что у меня на экране?">👁 Экран</button>
+  </div>
+  <form id="f"><input id="q" placeholder="Что сделать, Сабина?" autocomplete="off"><button>↵</button></form>
+</div>
+<canvas id="orb" width="300" height="300" title="Клик — говорить, двойной клик — меню"></canvas>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const api = (url, opts = {}) => fetch(url, {headers: {"Content-Type": "application/json", "X-Jarvis-Token": TOKEN}, ...opts}).then(r => r.json());
+const post = (url, body) => api(url, {method: "POST", body: JSON.stringify(body || {})});
+const py = () => window.pywebview && window.pywebview.api;
+
+let L = {state: "", mic: 0, out: 0, said: "", heard: "", palette: 0}, PAL = null, lastSaid = "", lastHeard = "";
+let accent = [56, 217, 255];
+
+// ---------- шар ----------
+const cv = $("orb"), g = cv.getContext("2d");
+let t = 0, mic = 0, out = 0, spin = 0, ripples = [];
+function draw() {
+  t += 1 / 60;
+  mic += (L.mic - mic) * 0.25; out += (L.out - out) * 0.3;
+  const st = L.state, think = st === "думаю", speak = st === "говорю", listen = st === "слушаю";
+  spin += (think ? 0.09 : 0.012) + out * 0.05;
+  if (listen && mic > 0.08 && Math.random() < mic) ripples.push({r: 46, a: 0.6});
+  g.clearRect(0, 0, 300, 300);
+  const cx = 150, cy = 150, [R, G, B] = accent, col = a => `rgba(${R},${G},${B},${a})`;
+  // ореол
+  const glow = g.createRadialGradient(cx, cy, 10, cx, cy, 140);
+  glow.addColorStop(0, col(0.35 + out * 0.5)); glow.addColorStop(0.45, col(0.08 + out * 0.15)); glow.addColorStop(1, col(0));
+  g.fillStyle = glow; g.beginPath(); g.arc(cx, cy, 140, 0, 7); g.fill();
+  // волны от вашего голоса
+  ripples = ripples.filter(p => (p.r += 1.6, p.a -= 0.012) > 0);
+  ripples.forEach(p => { g.strokeStyle = col(p.a); g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, p.r, 0, 7); g.stroke(); });
+  // кольцо-осциллограф: дрожит, когда он говорит
+  g.lineWidth = 2.5; g.strokeStyle = col(0.9); g.shadowColor = col(1); g.shadowBlur = 16;
+  g.beginPath();
+  for (let i = 0; i <= 120; i++) {
+    const a = i / 120 * Math.PI * 2;
+    const w = speak ? out * 16 * (Math.sin(a * 6 + t * 9) * 0.6 + Math.sin(a * 11 - t * 13) * 0.4) : Math.sin(a * 3 + t * 2) * 1.5;
+    const r = 52 + w + mic * 10;
+    i ? g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r) : g.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+  }
+  g.stroke();
+  // дуги: крутятся быстрее, когда думает
+  g.lineWidth = 3;
+  for (let k = 0; k < 3; k++) {
+    const a0 = spin * (k % 2 ? -1 : 1) + k * 2.1;
+    g.strokeStyle = col(0.55 - k * 0.12); g.beginPath(); g.arc(cx, cy, 66 + k * 9, a0, a0 + 1.1 + (think ? 0.6 : 0)); g.stroke();
+  }
+  // ядро
+  g.shadowBlur = 30;
+  const core = g.createRadialGradient(cx, cy, 2, cx, cy, 34 + out * 14);
+  core.addColorStop(0, "rgba(255,255,255,.95)"); core.addColorStop(0.35, col(0.85)); core.addColorStop(1, col(0));
+  g.fillStyle = core; g.beginPath(); g.arc(cx, cy, 34 + out * 14 + mic * 6, 0, 7); g.fill();
+  g.shadowBlur = 0;
+  requestAnimationFrame(draw);
+}
+draw();
+
+// ---------- клики: один — говорить, два — меню ----------
+let clickTimer = null;
+cv.addEventListener("click", () => {
+  if (clickTimer) return;
+  clickTimer = setTimeout(() => { clickTimer = null; post("/api/wake", {}); }, 260);
+});
+cv.addEventListener("dblclick", () => { clearTimeout(clickTimer); clickTimer = null; toggle(); });
+function open() { if (!document.body.classList.contains("big")) { document.body.classList.add("big"); py() && py().expand(); }
+  setTimeout(() => $("q").focus(), 80); loadPeek(); }
+function close() { document.body.classList.remove("big"); py() && py().collapse(); }
+function toggle() { document.body.classList.contains("big") ? close() : open(); }
+$("min").onclick = close;
+addEventListener("keydown", e => { if (e.key === "Escape") close(); });
+
+// ---------- переписка ----------
+function add(kind, text) {
+  const el = document.createElement("div"); el.className = "msg " + kind; el.textContent = text;
+  $("chat").appendChild(el); $("chat").scrollTop = 1e9;
+  while ($("chat").children.length > 40) $("chat").firstChild.remove();
+}
+$("f").onsubmit = async e => {
+  e.preventDefault();
+  const text = $("q").value.trim(); if (!text) return;
+  $("q").value = ""; add("you", text);
+  $("st").textContent = "думаю…";
+  try { const r = await post("/api/ask", {text}); add("him", r.answer || "Готово."); }
+  catch { add("sys", "Джарвис не ответил"); }
+  $("st").textContent = "на связи";
+};
+document.querySelectorAll(".quick button").forEach(b => b.onclick = () => {
+  const a = b.dataset.a;
+  if (a === "wake") post("/api/wake", {});
+  else if (a === "stop") post("/api/wake", {stop: true});
+  else if (a === "core") window.open("/core");
+  else if (a === "dash") window.open("/");
+  else { $("q").value = b.dataset.q; $("f").requestSubmit(); }
+});
+
+// ---------- последняя панель с экрана Джарвиса ----------
+let REV = -1;
+async function loadPeek() {
+  try {
+    const s = await api("/api/screen");
+    REV = s.rev;
+    const p = s.panels[0], el = $("peek");
+    if (!p) { el.hidden = true; return; }
+    el.hidden = false;
+    el.innerHTML = `<h4>${esc(p.title)}</h4>${p.html || ""}`;  // html собран на сервере с экранированием
+    if (s.ui.accent) { const n = parseInt(s.ui.accent.slice(1), 16); accent = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      document.documentElement.style.setProperty("--accent", s.ui.accent); }
+  } catch {}
+}
+
+// ---------- живое состояние ----------
+async function poll() {
+  try {
+    L = await api("/api/live");
+    if (PAL === null) PAL = L.palette;
+    if (L.palette !== PAL) { PAL = L.palette; open(); }
+    if (L.rev !== REV) loadPeek();
+    if (L.heard && L.heard !== lastHeard) { lastHeard = L.heard; add("you", L.heard); }
+    if (L.said && L.state !== "говорю" && L.said !== lastSaid) { lastSaid = L.said; add("him", L.said); }
+    $("st").textContent = L.state || "на связи";
+  } catch {}
+}
+setInterval(poll, 100);
+
+// ---------- подтверждения: вопрос всплывает прямо у шара ----------
+let ASK = null;
+setInterval(async () => {
+  try {
+    const list = await api("/api/pending"), box = $("ask");
+    if (list.length) {
+      if (ASK !== list[0].id) { ASK = list[0].id; $("askq").textContent = list[0].question; box.hidden = false; open(); }
+    } else if (ASK) { ASK = null; box.hidden = true; }
+  } catch {}
+}, 1000);
+async function answer(yes) { if (!ASK) return; await post(`/api/pending/${ASK}`, {yes}); $("ask").hidden = true; ASK = null; }
+$("yes").onclick = () => answer(true); $("no").onclick = () => answer(false);
+</script>
+</body>
+</html>

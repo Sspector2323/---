@@ -280,9 +280,75 @@
   @keyframes fxshake { 0%,100% { transform: none; } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); }
                        60% { transform: translateX(-4px); } 80% { transform: translateX(4px); } }
   @media (prefers-reduced-motion: reduce) { body[class*="fx-"] .wrap, body[class*="fx-"]::after { animation: none !important; } }
+
+  /* ================= Живая тема: всё движется и отвечает голосу ================= */
+  body { background: #02060c; }
+  #bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  body::before { animation: gridflow 40s linear infinite; z-index: 0; }
+  @keyframes gridflow { to { background-position: 48px 48px, 48px 48px; } }
+  .wrap { z-index: 1; }
+
+  /* голосовой индикатор в шапке */
+  .voice { display: flex; align-items: center; gap: 10px; justify-self: center; padding: 8px 16px 8px 12px; border-radius: 999px;
+           background: rgba(8,20,36,.6); border: 1px solid var(--line); backdrop-filter: blur(10px); cursor: pointer;
+           transition: border-color .3s, box-shadow .3s; }
+  .voice:hover { border-color: var(--accent); box-shadow: var(--glow); }
+  .voice .eq { display: flex; gap: 3px; align-items: center; height: 22px; }
+  .voice .eq i { width: 3px; border-radius: 2px; background: var(--accent); height: 4px; transition: height .09s linear;
+                 box-shadow: 0 0 8px var(--accent); }
+  .voice .lbl { font: 500 11px/1 Orbitron, sans-serif; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); min-width: 92px; }
+  .voice.on .lbl { color: var(--accent); }
+  .voice.think .eq i { animation: thinkbar 1s ease-in-out infinite; }
+  .voice.think .eq i:nth-child(2n) { animation-delay: .15s; } .voice.think .eq i:nth-child(3n) { animation-delay: .3s; }
+  @keyframes thinkbar { 50% { height: 18px; } }
+  .reactor { transition: transform .08s linear; }
+
+  /* карточки: стекло, наклон за курсором, подсветка, бегущая рамка */
+  .card { background: linear-gradient(160deg, rgba(16,34,58,.62), rgba(5,12,24,.55)); border: 1px solid rgba(56,217,255,.12);
+          transform: perspective(1100px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(0);
+          transition: transform .25s ease-out, border-color .3s, box-shadow .3s;
+          opacity: 0; animation: cardin .8s cubic-bezier(.16,.9,.2,1) forwards; animation-delay: calc(var(--i, 0) * 55ms); }
+  @keyframes cardin { from { opacity: 0; transform: perspective(1100px) translateY(26px) rotateX(8deg) scale(.97); filter: blur(4px); }
+                      to { opacity: 1; filter: none; } }
+  .card::after { top: 0; bottom: 0; height: auto; opacity: 0; transition: opacity .3s;
+                 background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(56,217,255,.13), transparent 60%); }
+  .card:hover::after { opacity: 1; }
+  .card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+                  background: conic-gradient(from var(--ang, 0deg), transparent 0 70%, var(--accent) 85%, transparent 100%);
+                  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+                  -webkit-mask-composite: xor; mask-composite: exclude; opacity: 0; transition: opacity .4s; animation: rot 4s linear infinite; }
+  .card:hover::before, .card.live::before { opacity: 1; }
+  .card:hover { box-shadow: 0 18px 50px rgba(0,0,0,.45), 0 0 30px rgba(56,217,255,.12); }
+  @property --ang { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+  @keyframes rot { to { --ang: 360deg; } }
+  .card h2 { background: linear-gradient(90deg, var(--accent), #eaffff 45%, var(--accent) 60%); background-size: 220% 100%;
+             -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 6s linear infinite; }
+  .card h2 .count, .card h2 .right, .card h2 button, .card h2 a { -webkit-text-fill-color: initial; }
+  .card h2 .count { color: var(--muted); }
+  @keyframes shimmer { to { background-position: -220% 0; } }
+  .count.bump { animation: bump .6s cubic-bezier(.3,1.6,.5,1); }
+  @keyframes bump { 40% { transform: scale(1.45); background: rgba(56,217,255,.35); color: #fff; } }
+  ul.list li { animation: slidein .45s cubic-bezier(.2,.8,.2,1) backwards; }
+  @keyframes slidein { from { opacity: 0; transform: translateX(-12px); } }
+
+  /* строка команды: переливающаяся рамка */
+  .command { position: relative; background: linear-gradient(180deg, rgba(14,34,58,.72), rgba(6,14,28,.72)); backdrop-filter: blur(12px); }
+  .command::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none;
+                     background: linear-gradient(90deg, transparent, var(--accent), #0a84ff, transparent); background-size: 300% 100%;
+                     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+                     mask-composite: exclude; animation: flow 5s linear infinite; }
+  @keyframes flow { to { background-position: -300% 0; } }
+  .act { transition: transform .2s cubic-bezier(.3,1.5,.5,1), border-color .2s, box-shadow .2s; }
+  .act:hover { transform: translateY(-4px) scale(1.04); }
+  .act .i { transition: transform .3s; } .act:hover .i { transform: scale(1.25) rotate(-6deg); }
+  @media (prefers-reduced-motion: reduce) {
+    .card, .card::before, .card h2, .command::before, ul.list li, body::before { animation: none !important; opacity: 1; }
+    .card { transform: none !important; }
+  }
 </style>
 </head>
 <body>
+<canvas id="bg" aria-hidden="true"></canvas>
 <div class="wrap">
   <header class="top">
     <div class="brand">
@@ -292,7 +358,10 @@
         <div class="greet" id="greet">Моё почтение<small id="subgreet">Я к вашим услугам</small></div>
       </div>
     </div>
-    <div class="spacer"><span class="viewtag" id="viewtag"></span></div>
+    <div class="spacer" style="display:flex;align-items:center;gap:14px;justify-content:center">
+      <span class="viewtag" id="viewtag"></span>
+      <div class="voice" id="voice" title="Клик — говорить"><div class="eq" id="eq"></div><span class="lbl" id="vlbl">ожидаю</span></div>
+    </div>
     <div class="weather" id="weather" title="Обновить погоду"><span class="ic">⛅</span><div><div class="t">—</div><div class="muted">погода</div></div></div>
     <div class="clock" id="clockBox" title="Сводка дня"><div id="time">--:--</div><div id="date"></div></div>
     <a class="icon-btn" href="/core" title="3D-ядро Джарвиса">◎</a>
@@ -793,6 +862,93 @@ function nextSuggest() {
   el.innerHTML = `Попробуйте: <b>«${esc(SUGGEST[SG++ % SUGGEST.length])}»</b>`;
 }
 nextSuggest(); setInterval(nextSuggest, 7000);
+
+
+// ================= Живая тема =================
+(() => {
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // порядок появления карточек
+  document.querySelectorAll(".card").forEach((c, i) => c.style.setProperty("--i", i));
+  // наклон и подсветка за курсором
+  if (!reduce) document.querySelectorAll(".card").forEach(c => {
+    c.addEventListener("pointermove", e => {
+      if (e.pointerType !== "mouse") return;
+      const r = c.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+      c.style.setProperty("--ry", `${(x - .5) * 5}deg`); c.style.setProperty("--rx", `${(.5 - y) * 5}deg`);
+      c.style.setProperty("--mx", `${x * 100}%`); c.style.setProperty("--my", `${y * 100}%`);
+    });
+    c.addEventListener("pointerleave", () => { c.style.setProperty("--rx", "0deg"); c.style.setProperty("--ry", "0deg"); });
+  });
+  // счётчики «подпрыгивают», когда меняются
+  new MutationObserver(ms => ms.forEach(m => {
+    const el = m.target.nodeType === 3 ? m.target.parentElement : m.target;
+    if (el && el.classList && el.classList.contains("count")) { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
+  })).observe(document.body, {subtree: true, characterData: true, childList: true});
+
+  // голос: индикатор, реактор в шапке, энергия фона
+  const eq = document.getElementById("eq"), bars = [];
+  for (let i = 0; i < 9; i++) { const b = document.createElement("i"); eq.appendChild(b); bars.push(b); }
+  const LBL = {"слушаю": "слушаю", "говорю": "говорю", "думаю": "думаю"};
+  let LV = {mic: 0, out: 0, state: ""}, energy = 0;
+  document.getElementById("voice").onclick = () => post("/api/wake", {});
+  setInterval(async () => {
+    try { LV = await api("/api/live"); } catch { return; }
+    const v = document.getElementById("voice"), busy = document.getElementById("now") && document.getElementById("now").classList.contains("busy");
+    const st = LV.state === "говорю" ? "говорю" : (LV.state === "думаю" || busy) ? "думаю" : LV.state === "слушаю" ? "слушаю" : "";
+    v.classList.toggle("on", !!st); v.classList.toggle("think", st === "думаю");
+    document.getElementById("vlbl").textContent = LBL[st] || "ожидаю";
+    const lvl = st === "говорю" ? LV.out : LV.mic;
+    bars.forEach((b, i) => { const k = Math.sin(i / 8 * Math.PI); b.style.height = st === "думаю" ? "" :
+      `${4 + Math.min(18, lvl * 40 * k * (0.6 + Math.random() * 0.8))}px`; });
+    const r = document.querySelector(".reactor");
+    if (r) r.style.transform = `scale(${1 + Math.min(0.35, (LV.out + LV.mic * 0.5) * 0.6)})`;
+  }, 100);
+
+  // фон: северное сияние + сеть частиц, ускоряется, когда Джарвис говорит
+  const cv = document.getElementById("bg"), g = cv.getContext("2d");
+  let W = 0, H = 0, P = [], mx = 0.5, my = 0.5;
+  function size() {
+    const d = Math.min(devicePixelRatio, 1.5); W = cv.width = innerWidth * d; H = cv.height = innerHeight * d;
+    cv.style.width = innerWidth + "px"; cv.style.height = innerHeight + "px";
+    const n = Math.round(Math.min(130, innerWidth * innerHeight / 14000));
+    P = Array.from({length: n}, () => ({x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .3, vy: (Math.random() - .5) * .3}));
+  }
+  size(); addEventListener("resize", size);
+  addEventListener("pointermove", e => { mx = e.clientX / innerWidth; my = e.clientY / innerHeight; });
+  let last = 0, t = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (document.hidden || now - last < 33) return;  // 30 кадров в секунду хватает
+    last = now; t += 0.033;
+    energy += ((LV.out || 0) * 1.4 + (LV.mic || 0) * 0.6 - energy) * 0.15;
+    const acc = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#38d9ff";
+    const n = parseInt(acc.slice(1), 16), R = (n >> 16) & 255, G = (n >> 8) & 255, B = n & 255;
+    g.clearRect(0, 0, W, H);
+    // сияние
+    g.globalCompositeOperation = "lighter";
+    [[0.2, 0.15, 0.55, 0], [0.8, 0.25, 0.45, 2], [0.5, 0.95, 0.6, 4]].forEach(([bx, by, br, ph]) => {
+      const x = (bx + Math.sin(t * 0.13 + ph) * 0.12 + (mx - .5) * 0.04) * W, y = (by + Math.cos(t * 0.11 + ph) * 0.1 + (my - .5) * 0.04) * H;
+      const rad = br * Math.max(W, H) * (1 + energy * 0.25);
+      const grd = g.createRadialGradient(x, y, 0, x, y, rad);
+      grd.addColorStop(0, `rgba(${R},${G},${B},${0.10 + energy * 0.12})`); grd.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = grd; g.fillRect(0, 0, W, H);
+    });
+    // частицы и связи
+    const sp = 1 + energy * 6, link = 130 * Math.min(devicePixelRatio, 1.5);
+    P.forEach(p => { p.x += p.vx * sp; p.y += p.vy * sp;
+      if (p.x < 0 || p.x > W) p.vx *= -1; if (p.y < 0 || p.y > H) p.vy *= -1; });
+    g.lineWidth = 1;
+    for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
+      const dx = P[i].x - P[j].x, dy = P[i].y - P[j].y, d = dx * dx + dy * dy;
+      if (d < link * link) { g.strokeStyle = `rgba(${R},${G},${B},${(1 - Math.sqrt(d) / link) * (0.12 + energy * 0.3)})`;
+        g.beginPath(); g.moveTo(P[i].x, P[i].y); g.lineTo(P[j].x, P[j].y); g.stroke(); }
+    }
+    g.fillStyle = `rgba(${R},${G},${B},${0.5 + energy * 0.5})`;
+    P.forEach(p => { g.beginPath(); g.arc(p.x, p.y, 1.4, 0, 7); g.fill(); });
+    g.globalCompositeOperation = "source-over";
+  }
+  if (!reduce) requestAnimationFrame(frame);
+})();
 
 tickClock(); setInterval(tickClock, 10000);
 refresh(); setInterval(refresh, 5000);

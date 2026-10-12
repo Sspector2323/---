@@ -95,7 +95,7 @@ class Voice:
     def listen(self, timeout: float | None = None, phrase_limit: float = 45, accurate: bool = False) -> str | None:
         """accurate=True — ждём именно команду (после «Джарвис», в продолжении разговора): точный движок."""
         self._set_threshold()  # чувствительность можно менять в настройках на ходу
-        hearing.DIAG.update(state="слушаю", threshold=int(self.rec.energy_threshold))
+        hearing.DIAG.update(state="слушаю" if accurate else "жду «Джарвис»", threshold=int(self.rec.energy_threshold))
         try:
             with self.mic as src:
                 audio = self.rec.listen(src, timeout=timeout, phrase_time_limit=phrase_limit)
@@ -129,7 +129,8 @@ class Voice:
 
     def _engines(self) -> list[str]:
         from . import tts_eleven
-        pref = config.TTS_ENGINE
+        # в живом режиме и обычная озвучка (если живой голос недоступен) — тем же голосом OpenAI
+        pref = "openai" if config.VOICE_MODE == "realtime" else config.TTS_ENGINE
         order = {"edge": ["edge", "openai", "elevenlabs"], "openai": ["openai", "elevenlabs", "edge"],
                  "elevenlabs": ["elevenlabs", "openai", "edge"]}.get(pref, ["edge", "openai"])
         available = {"openai": bool(os.getenv("OPENAI_API_KEY")), "elevenlabs": tts_eleven.enabled(), "edge": True}
@@ -141,7 +142,7 @@ class Voice:
         import hashlib
         folder = config.DATA_DIR / "tts_cache"
         folder.mkdir(exist_ok=True)
-        key = hashlib.md5(f"{config.TTS_ENGINE}|{config.TTS_VOICE}|{config.OPENAI_VOICE}|{config.ELEVENLABS_VOICE_ID}|"
+        key = hashlib.md5(f"{config.VOICE_MODE}|{config.REALTIME_VOICE}|{config.TTS_ENGINE}|{config.TTS_VOICE}|{config.OPENAI_VOICE}|{config.ELEVENLABS_VOICE_ID}|"
                           f"{config.ELEVENLABS_MODEL}|{config.VOICE_SPEED}|"
                           f"{config.VOICE_PITCH}|{config.VOICE_STYLE}|{text}".encode()).hexdigest()
         return folder / f"{key}.mp3"
@@ -242,7 +243,8 @@ class Voice:
         fd, path = tempfile.mkstemp(suffix=".mp3")
         os.close(fd)
         client = self.__dict__.setdefault("_openai", openai.OpenAI())
-        params = dict(model="gpt-4o-mini-tts", voice=config.OPENAI_VOICE, input=text, response_format="mp3",
+        voice = config.REALTIME_VOICE if config.VOICE_MODE == "realtime" else config.OPENAI_VOICE
+        params = dict(model="gpt-4o-mini-tts", voice=voice, input=text, response_format="mp3",
                       instructions=config.VOICE_STYLE, speed=config.VOICE_SPEED)
         try:
             with client.audio.speech.with_streaming_response.create(**params) as r:

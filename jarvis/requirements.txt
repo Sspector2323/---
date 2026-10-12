@@ -1,5 +1,5 @@
 # Мозг (OpenAI или Claude — выбирается в .env)
-openai>=1.50
+openai[realtime]>=2.0   # живой голос (Realtime) и мозг
 anthropic>=1.8
 python-dotenv>=1.0
 
@@ -26,3 +26,7 @@ opencv-contrib-python>=4.8   # камера (look, жесты); та же сбо
 playwright>=1.47   # управление браузером (Edge/Chrome уже есть в Windows)
 mediapipe>=0.10.14   # жесты рукой
 keyboard>=0.13   # горячие клавиши
+sounddevice>=0.4.6   # звук живого голоса
+pystray>=0.19   # значок в трее
+Pillow>=10   # значок и картинки
+winotify>=1.1; sys_platform == "win32"   # уведомления Windows

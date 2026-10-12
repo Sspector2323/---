@@ -78,6 +78,14 @@ SETTINGS = [
     ("BARGE_IN", "Можно перебивать: заговорили — Джарвис замолкает и слушает", "select", ["true", "false"], "voice"),
     ("BARGE_MODE", "Как перебивать: word — только словом («Джарвис», «стоп», «подожди»), any — любым голосом (в наушниках)", "select", ["word", "any"], "voice"),
     ("BARGE_SENSITIVITY", "Чувствительность перебивания (меньше — чутче; в колонках без наушников — 3)", "select", ["2", "2.5", "3", "4"], "voice"),
+    ("VOICE_MODE", "Голос: realtime — живой разговор (мгновенно, с интонацией, перебивайте когда угодно); classic — прежний", "select", ["realtime", "classic"], "voice"),
+    ("REALTIME_VOICE", "Живой голос OpenAI (cedar — низкий бархатный мужской; marin — женский)", "select", ["cedar", "ash", "ballad", "echo", "verse", "alloy", "marin"], "voice"),
+    ("REALTIME_MODEL", "Модель живого голоса (mini — в 3 раза дешевле)", "select", ["gpt-realtime", "gpt-realtime-2.1", "gpt-realtime-mini", "gpt-realtime-2.1-mini"], "voice"),
+    ("REALTIME_SPEED", "Темп живого голоса", "select", ["0.95", "1.0", "1.08", "1.15"], "voice"),
+    ("REALTIME_VAD", "Когда он отвечает: semantic — понимает, что вы договорили (не перебивает); fast — после короткой паузы", "select", ["semantic", "fast"], "voice"),
+    ("REALTIME_NOISE", "Микрофон: far_field — настольный; near_field — гарнитура у рта", "select", ["far_field", "near_field"], "voice"),
+    ("REALTIME_ECHO_GATE", "Фильтр эха колонок (false — если вы в наушниках: тогда перебивать ещё легче)", "select", ["true", "false"], "voice"),
+    ("REALTIME_IDLE", "Через сколько секунд тишины он снова ждёт «Джарвис»", "select", ["15", "25", "40", "60"], "voice"),
     ("STT_ENGINE", "Распознавание: smart — команды точным ElevenLabs Scribe, остальное Google; elevenlabs — всё через Scribe; google — только Google", "select", ["smart", "elevenlabs", "google"], "voice"),
     ("CLAP_WAKE", "Двойной хлопок будит Джарвиса (без слова «Джарвис»)", "select", ["true", "false"], "voice"),
     ("SOUNDS", "Звуки интерфейса: «слушаю», «готово», «ошибка»", "select", ["true", "false"], "voice"),
@@ -93,6 +101,10 @@ SETTINGS = [
     ("WAKE_WORDS", "Слова-активаторы", "text", "джарвис,jarvis", "voice"),
     ("USER_NAME", "Как к вам обращаться", "text", "Сабина", "look"),
     ("GREETING", "Приветствие при запуске ({user} — имя)", "text", "Моё почтение, {user}. Я к вашим услугам.", "look"),
+    ("ORB", "Шар Джарвиса поверх всех окон (клик — говорить, двойной клик — меню)", "select", ["true", "false"], "look"),
+    ("TRAY", "Значок Джарвиса в трее Windows", "select", ["true", "false"], "look"),
+    ("NOTIFICATIONS", "Уведомления Windows: напоминания, готовые задачи", "select", ["true", "false"], "look"),
+    ("HOTKEY_PALETTE", "Горячая клавиша строки команды у шара", "text", "ctrl+alt+space", "look"),
     ("MAIN_SCREEN", "Главный монитор: core — 3D-ядро Джарвиса (при 3 мониторах), dashboard — дашборд", "select", ["core", "dashboard"], "look"),
     ("INTRO_ANIMATION", "Анимация появления на всех мониторах", "select", ["true", "false"], "look"),
     ("DASHBOARD_SCREENS", "Дашборд при запуске: all — все мониторы, main — главный, off — нет", "select", ["all", "main", "off"], "look"),
@@ -101,7 +113,7 @@ SETTINGS = [
     ("WORKSPACE_URLS", "Рабочая зона: сайты через запятую", "text", "https://railway.com/dashboard,…", "look"),
     ("CONFIRM_DANGEROUS", "Спрашивать «да/нет» перед опасными действиями", "select", ["true", "false"], "look"),
 ]
-NEEDS_RESTART = {"HOTKEY_TALK", "HOTKEY_STOP", "MAIN_SCREEN", "TELEGRAM_BOT_TOKEN", "AI_PROVIDER", "INTRO_ANIMATION", "DASHBOARD_SCREENS", "PAUSE_SECONDS", "WAKE_WORDS"}
+NEEDS_RESTART = {"VOICE_MODE", "REALTIME_VOICE", "REALTIME_SPEED", "REALTIME_MODEL", "REALTIME_VAD", "REALTIME_NOISE", "ORB", "TRAY", "HOTKEY_PALETTE", "HOTKEY_TALK", "HOTKEY_STOP", "MAIN_SCREEN", "TELEGRAM_BOT_TOKEN", "AI_PROVIDER", "INTRO_ANIMATION", "DASHBOARD_SCREENS", "PAUSE_SECONDS", "WAKE_WORDS"}
 SECRET_KEYS = {k for k, _, kind, *_ in SETTINGS if kind == "secret"}
 
 
@@ -551,6 +563,25 @@ def screen_img(name: str):
     if "/" in name or "\\" in name or name.startswith("."):
         return "bad name", 400
     return send_from_directory(SCREEN_DIR, name, max_age=3600)
+
+
+LIVE = {"palette": 0}
+
+
+@app.get("/api/live")
+def live():
+    """Лёгкий опрос 10 раз в секунду: состояние и громкость — для шара, ядра и дашборда."""
+    from . import hearing
+    d = hearing.DIAG
+    return jsonify(state=d.get("state", ""), mic=round(d.get("mic_level", 0), 3), out=round(d.get("out_level", 0), 3),
+                   said=d.get("last_said", "") if time.time() - d.get("said_at", 0) < 10 else "",
+                   heard=d.get("last_text", "") if time.time() - d.get("last_at", 0) < 10 else "",
+                   palette=LIVE["palette"], panels=len(SCREEN["panels"]), rev=SCREEN["rev"])
+
+
+@app.get("/orb")
+def orb_page():
+    return _page("orb.html")
 
 
 @app.get("/api/diag")

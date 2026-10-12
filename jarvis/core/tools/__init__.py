@@ -50,5 +50,5 @@ def I(desc: str, **extra) -> dict:
 
 def load_all() -> dict[str, Tool]:
     # Импорт модулей регистрирует их инструменты
-    from . import system, files, tasks, mail, info, claude_code, notion, github, workspace, telegram, chats, documents, screen, vision, browser  # noqa: F401
+    from . import system, files, tasks, mail, info, claude_code, notion, github, workspace, telegram, chats, documents, screen, vision, browser, context  # noqa: F401
     return REGISTRY

@@ -101,7 +101,9 @@ def main():
               ("" if same else "  ← это НЕ эта версия/папка: закройте его и запустите start_jarvis.bat отсюда"))
     except Exception:  # noqa: BLE001
         print("○ Джарвис сейчас не запущен (или запущена очень старая версия без номера)")
-    print(f"Мозг: {config.AI_PROVIDER}   Модель OpenAI: {config.OPENAI_MODEL}\n")
+    print(f"Мозг: {config.AI_PROVIDER}   Модель OpenAI: {config.OPENAI_MODEL}")
+    print(f"Голос: {config.VOICE_MODE}" + (f" · {config.REALTIME_VOICE} · {config.REALTIME_MODEL}"
+                                         if config.VOICE_MODE == "realtime" else "") + "\n")
     if config.SHADOWED:
         print("⚠️ В Windows есть переменные с теми же именами (Джарвис теперь берёт значения из .env): "
               + ", ".join(config.SHADOWED) + "\n")
@@ -165,7 +167,9 @@ def main():
     print("\n— Браузер, камера, жесты, клавиши —")
     import importlib.util
     for mod, what in (("playwright", "управление браузером"), ("cv2", "камера"), ("mediapipe", "жесты рукой"),
-                      ("keyboard", "горячие клавиши")):
+                      ("keyboard", "горячие клавиши"), ("sounddevice", "звук живого голоса"),
+                      ("websockets", "соединение живого голоса"), ("pystray", "значок в трее"),
+                      ("winotify", "уведомления Windows")):
         ok = importlib.util.find_spec(mod) is not None
         print(f"  {OK if ok else WARN} {what}" + ("" if ok else f" — нет пакета {mod}, запустите update_jarvis.bat"))
     from .tools.documents import find_browser

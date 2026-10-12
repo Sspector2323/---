@@ -81,7 +81,7 @@ def ask_with_fillers(io, ask, command: str, cancel=None) -> tuple[str | None, st
     return box.get("answer", "Готово."), None
 
 
-def reminder_loop(io):
+def reminder_loop(speak):
     while True:
         for r in due_reminders():
             text = f"{config.USER_NAME}, напоминаю: {r['text']}"
@@ -90,7 +90,9 @@ def reminder_loop(io):
                 send("⏰ " + text)
             except Exception:  # noqa: BLE001
                 pass
-            io.say(text)
+            from core import notify
+            notify.toast("⏰ Напоминание", r["text"])
+            speak(text)
         time.sleep(15)
 
 
@@ -134,8 +136,21 @@ def main():
         print("🎙 Настраиваю микрофон…")
         io = Voice()
 
+    # Живой голос (OpenAI Realtime): мгновенные ответы с интонацией. Без ключа или звука — прежняя схема.
+    rt = None
+    if not text_mode and config.VOICE_MODE == "realtime" and os.getenv("OPENAI_API_KEY"):
+        try:
+            from core.realtime import Realtime
+            from core.tools import load_all
+            rt = Realtime(load_all(), on_status=lambda s: print("  " + s))
+            print(f"🎙 Живой голос: {config.REALTIME_VOICE} · {config.REALTIME_MODEL}")
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠ Живой голос не запустился ({e}) — работаю по-старому.")
+            rt = None
+
     from core.confirmer import Confirmer
-    confirmer = Confirmer(io, voice_enabled=not text_mode)
+    # в живом режиме микрофон занят разговором — подтверждения идут окном, жестом 👍 и в Телеграм
+    confirmer = Confirmer(io, voice_enabled=not text_mode and rt is None)
 
     if config.AI_PROVIDER == "claude_code":
         from core.brain_claude_code import ClaudeCodeBrain as Brain
@@ -156,7 +171,15 @@ def main():
                   "впишите путь из команды  where.exe claude  в ⚙ Настройки → CLAUDE_PATH.")
             input("Нажмите Enter для выхода…")
             sys.exit(1)
+    if rt is not None:
+        rt.confirm = confirmer.ask
     lock = threading.Lock()
+
+    def speak(text: str):
+        """Сказать вслух: живым голосом, если он на связи, иначе обычной озвучкой."""
+        if rt is not None and rt.announce(text):
+            return
+        io.say(text)
 
     def ask(text: str) -> str:
         from core import activity
@@ -173,7 +196,7 @@ def main():
             activity.task_end(answer)
             return answer
 
-    dashboard.BRAIN.update(ask=ask, confirm=confirmer.ask, say=io.say, confirmer=confirmer)
+    dashboard.BRAIN.update(ask=ask, confirm=confirmer.ask, say=speak, confirmer=confirmer)
 
     # Жесты и горячие клавиши: «стоп», «слушаю», «да/нет» на подтверждение, «убрать панель»
     from core import gestures, hotkeys
@@ -189,14 +212,28 @@ def main():
 
     def stop_all():
         io.interrupt()
+        if rt is not None:
+            rt.interrupt()
         if getattr(brain, "cancel", None):
             brain.cancel()
 
-    dashboard.BRAIN.update(wake=io.wake, stop=stop_all)
-    gestures.HANDLERS.update(stop=stop_all, wake=io.wake, yes=lambda: answer_pending(True),
+    def wake():
+        """«Слушаю» без слова «Джарвис»: жест, клавиша, пробел, клик по шару."""
+        if rt is not None and rt.ready.is_set():
+            from core import sfx
+            sfx.play("wake")
+            rt.activate()
+        else:
+            io.wake()
+
+    def palette():
+        dashboard.LIVE["palette"] += 1  # шар Джарвиса раскрывает строку команды
+
+    dashboard.BRAIN.update(wake=wake, stop=stop_all)
+    gestures.HANDLERS.update(stop=stop_all, wake=wake, yes=lambda: answer_pending(True),
                              no=lambda: answer_pending(False), close_panel=close_top_panel)
     if not text_mode:
-        keys = hotkeys.start(io)
+        keys = hotkeys.start(wake, stop_all, palette)
         if keys:
             print(f"⌨ Горячие клавиши: {keys}")
     if config.GESTURES and not text_mode:
@@ -205,19 +242,23 @@ def main():
     Bot(ask, confirmer).start()  # личный Телеграм-бот (если задан TELEGRAM_BOT_TOKEN)
     from core import tg_reader
     threading.Thread(target=tg_reader.background_loop, daemon=True).start()  # задачи из рабочих чатов
-    threading.Thread(target=reminder_loop, args=(io,), daemon=True).start()
+    threading.Thread(target=reminder_loop, args=(speak,), daemon=True).start()
+    from core import ecosystem
+    ecosystem.start(url, wake=wake, stop=stop_all, quit_fn=lambda: os._exit(0))  # шар поверх окон, трей
     print(f"📊 Дашборд: {url}")
 
     if intro_on:  # приветствие звучит, когда на экране появляется надпись
         time.sleep(max(0.0, 3.6 - (time.time() - t_start)))
-    io.say(config.GREETING.format(user=config.USER_NAME))
+    if rt is not None:
+        rt.ready.wait(4)  # приветствие — уже живым голосом, если соединение успело подняться
+    speak(config.GREETING.format(user=config.USER_NAME))
     if config.MORNING_BRIEF:
         for _ in range(40):  # сводка собирается параллельно; ждём не дольше 4 секунд
             if "text" in brief_box:
                 break
             time.sleep(0.1)
         if brief_box.get("text"):
-            io.say(brief_box["text"])
+            speak(brief_box["text"])
             if config.TELEGRAM_BRIEF:
                 try:
                     from core.telegram_bot import send
@@ -241,10 +282,16 @@ def main():
                               accurate=time.time() < max(follow_up_until, getattr(io, "force_until", 0)))
         if not heard:
             continue
+        if rt is not None and rt.active:  # разговор уже начат жестом/клавишей — он слушает сам
+            rt.asleep.wait()
+            continue
         if heard == getattr(io, "CLAP", None):  # двойной хлопок — слушаю без слова «Джарвис»
             from core import activity, sfx
             activity.emit("voice", "Двойной хлопок — Джарвис слушает", "")
             sfx.play("clap") or io.beep()
+            if rt is not None and rt.ready.is_set():
+                rt.converse()
+                continue
             command = io.listen(timeout=8, phrase_limit=45, accurate=True)
             if not command or command == io.CLAP:
                 continue
@@ -257,6 +304,11 @@ def main():
             command = strip_wake(heard)
             if command is None:
                 continue  # говорили не с Джарвисом
+            if not command and rt is not None and rt.ready.is_set():
+                from core import sfx
+                sfx.play("wake") or io.beep()
+                rt.converse()  # «Джарвис» — и дальше живой разговор, пока не замолчите
+                continue
             if not command:
                 io.beep()  # «слушаю» — сигналом, это мгновенно
                 command = io.listen(timeout=8, phrase_limit=45, accurate=True)
@@ -264,11 +316,21 @@ def main():
                     continue
                 print(f"🎤 Вы: {command}")
 
+        if rt is not None and rt.ready.is_set() and not any(w in command.lower() for w in STOP_WORDS):
+            quick = try_quick(command) if is_quick(command) else None
+            if quick is not None:
+                from core import activity, sfx
+                activity.emit("done", f"Быстрая команда: {command}", quick or "")
+                sfx.play("done")
+                rt.converse()
+            else:
+                rt.converse(command)  # фраза уходит в живой разговор; дальше говорите без «Джарвис»
+            continue
         if not is_quick(command):  # простые команды («громче») выполняем сразу, остальное — дослушиваем
             command = hear_rest(io, command, text_mode)
         low = command.lower()
         if any(w in low for w in STOP_WORDS):
-            io.say(f"Всегда к вашим услугам, {config.USER_NAME}. Отключаюсь.")
+            speak(f"Всегда к вашим услугам, {config.USER_NAME}. Отключаюсь.")
             break
         if any(w in low for w in RESET_WORDS):
             brain.reset()

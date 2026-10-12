@@ -33,7 +33,9 @@ class Confirmer:
         if self.voice:
             threading.Thread(target=self._by_voice, args=(cid, item), daemon=True).start()
         else:
-            print(f"❓ Подтвердите на дашборде или в Телеграме: {question[:200]}")
+            print(f"❓ Подтвердите у шара Джарвиса, на дашборде или в Телеграме: {question[:200]}")
+            from . import notify
+            notify.toast("Джарвис ждёт разрешения", question[:200])
         if not item["event"].wait(timeout):
             self._resolved(cid, False)
         with self.lock:

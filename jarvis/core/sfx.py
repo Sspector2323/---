@@ -33,6 +33,7 @@ SOUNDS = {
     "wake": lambda: _tone([(660, 0.07, None), (990, 0.12, None)]),          # «слушаю»
     "clap": lambda: _tone([(520, 0.06, None), (780, 0.06, None), (1170, 0.12, None)]),
     "done": lambda: _tone([(880, 0.09, None), (1320, 0.22, None)], 0.22),   # тихий звон
+    "sleep": lambda: _tone([(880, 0.08, None), (587, 0.16, None)], 0.16),      # «засыпаю» — тихо, вниз
     "error": lambda: _tone([(330, 0.12, None), (220, 0.25, None)], 0.28),
 }
 
