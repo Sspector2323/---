@@ -5,3 +5,4 @@ __pycache__/
 venv/
 service_account*.json
 v2/plates/__pycache__/
+dante-wallpapers/v3/dist/*/
