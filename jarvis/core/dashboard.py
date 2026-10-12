@@ -78,6 +78,10 @@ SETTINGS = [
     ("BARGE_IN", "Можно перебивать: заговорили — Джарвис замолкает и слушает", "select", ["true", "false"], "voice"),
     ("BARGE_MODE", "Как перебивать: word — только словом («Джарвис», «стоп», «подожди»), any — любым голосом (в наушниках)", "select", ["word", "any"], "voice"),
     ("BARGE_SENSITIVITY", "Чувствительность перебивания (меньше — чутче; в колонках без наушников — 3)", "select", ["2", "2.5", "3", "4"], "voice"),
+    ("STT_ENGINE", "Распознавание: smart — команды точным ElevenLabs Scribe, остальное Google; elevenlabs — всё через Scribe; google — только Google", "select", ["smart", "elevenlabs", "google"], "voice"),
+    ("CLAP_WAKE", "Двойной хлопок будит Джарвиса (без слова «Джарвис»)", "select", ["true", "false"], "voice"),
+    ("SOUNDS", "Звуки интерфейса: «слушаю», «готово», «ошибка»", "select", ["true", "false"], "voice"),
+    ("FILLERS", "Пока думает: one — одна короткая фраза и тишина; chatty — болтает; off — молча", "select", ["one", "chatty", "off"], "voice"),
     ("MIC_SENSITIVITY", "Чувствительность микрофона (больше — слышит тише; если приходится повышать голос — 1.5 или 2)", "select", ["0.7", "1.0", "1.5", "2.0", "3.0"], "voice"),
     ("VOICE_SPEED", "Темп речи (1.0 — обычный, 1.12 — чуть быстрее)", "select", ["1.0", "1.05", "1.12", "1.2", "1.3"], "voice"),
     ("VOICE_PITCH", "Высота голоса Microsoft (меньше — глубже)", "select", ["-6Hz", "-12Hz", "-18Hz", "+0Hz"], "voice"),
@@ -456,7 +460,72 @@ def pending_answer(cid: str):
     return jsonify(ok=bool(c and c.answer(cid, bool(request.get_json(force=True).get("yes")))))
 
 
+# ---------- Экран Джарвиса: панели, которые он сам выводит, и вид интерфейса ----------
+SCREEN = {"rev": 0, "panels": [], "ui": {"accent": "", "effect": "", "effect_id": 0}}
+SCREEN_DIR = config.DATA_DIR / "screen"
+RUNNING = False
+_screen_lock = threading.Lock()
+
+
+def screen_op(op: str, data: dict) -> str:
+    """show / close / clear / ui / reset. Вызывается инструментами — напрямую или через POST /api/screen."""
+    with _screen_lock:
+        panels, ui = SCREEN["panels"], SCREEN["ui"]
+        if op == "show":
+            panel = {k: data.get(k, "") for k in ("id", "title", "html", "image", "link", "kind", "size", "at")}
+            panels[:] = [p for p in panels if p["id"] != panel["id"]]
+            panels.insert(0, panel)
+            del panels[6:]  # на экране — не больше шести, старые уходят
+        elif op == "close":
+            panels[:] = [p for p in panels if p["id"] != data.get("id")]
+        elif op == "clear":
+            panels.clear()
+        elif op == "ui":
+            if data.get("accent") is not None:
+                ui["accent"] = data["accent"]
+            if data.get("effect"):
+                ui["effect"], ui["effect_id"] = data["effect"], ui["effect_id"] + 1
+        elif op == "reset":
+            panels.clear()
+            ui.update(accent="", effect="")
+        SCREEN["rev"] += 1
+    return "ok"
+
+
+@app.get("/api/screen")
+def screen_get():
+    return jsonify(SCREEN)
+
+
+@app.post("/api/screen")
+def screen_post():
+    d = request.get_json(force=True)
+    return jsonify(ok=screen_op(str(d.get("op", "")), d.get("data") or {}) == "ok")
+
+
+@app.get("/api/screen/img/<name>")
+def screen_img(name: str):
+    from flask import send_from_directory
+    if "/" in name or "\\" in name or name.startswith("."):
+        return "bad name", 400
+    return send_from_directory(SCREEN_DIR, name, max_age=3600)
+
+
+@app.get("/api/diag")
+def diag():
+    from . import hearing
+    d = dict(hearing.DIAG)
+    d["ago"] = round(time.time() - d["last_at"]) if d.get("last_at") else None
+    d["stt"] = ("ElevenLabs Scribe для команд, Google для фона" if config.STT_ENGINE == "smart" else
+                "ElevenLabs Scribe" if config.STT_ENGINE == "elevenlabs" else "Google")
+    if config.STT_ENGINE != "google" and not config.ELEVENLABS_API_KEY:
+        d["stt"] = "Google (для точного распознавания добавьте ключ ElevenLabs)"
+    return jsonify(d)
+
+
 def start(ask_fn=None, confirm_fn=None):
+    global RUNNING
+    RUNNING = True
     BRAIN["ask"] = ask_fn
     BRAIN["confirm"] = confirm_fn
     # токен запуска кладём в файл — по нему MCP-сервер Джарвиса (в Cursor/Codex) спрашивает подтверждения

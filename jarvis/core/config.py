@@ -90,6 +90,18 @@ BARGE_SENSITIVITY = float(os.getenv("BARGE_SENSITIVITY", "2.5") or 2.5)
 BARGE_MODE = (os.getenv("BARGE_MODE", "word") or "word").strip().lower()
 # Чувствительность микрофона: больше — слышит тише (1 — обычно, 1.5–2 — если приходится повышать голос)
 MIC_SENSITIVITY = float(os.getenv("MIC_SENSITIVITY", "1.0") or 1.0)
+# Распознавание речи: smart — команды точным ElevenLabs Scribe (если есть ключ ElevenLabs), фон — бесплатным Google;
+# elevenlabs — всё через Scribe (точнее, но расходует минуты ElevenLabs); google — только Google
+STT_ENGINE = (os.getenv("STT_ENGINE", "smart") or "smart").strip().lower()
+STT_MODEL = os.getenv("STT_MODEL", "scribe_v1").strip() or "scribe_v1"
+# Двойной хлопок будит Джарвиса без слова «Джарвис»
+CLAP_WAKE = _bool("CLAP_WAKE", True)
+# Звуки интерфейса: сигнал «слушаю», звон «готово», сигнал ошибки
+SOUNDS = _bool("SOUNDS", True)
+# Фразы, пока он думает: one — одна короткая и тишина; chatty — болтает каждые несколько секунд; off — молча
+FILLERS = (os.getenv("FILLERS", "one") or "one").strip().lower()
+# Модель OpenAI, которая смотрит на экран и в камеру (инструмент look)
+VISION_MODEL = os.getenv("VISION_MODEL", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
 # Сколько секунд тишины считать концом фразы (больше — можно делать паузы, не боясь, что Джарвис перебьёт)
 PAUSE_SECONDS = float(os.getenv("PAUSE_SECONDS", "1.0") or 1.0)
 # Запасной голос Windows, если основной недоступен (на многих ПК он только женский — Irina)

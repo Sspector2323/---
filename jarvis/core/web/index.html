@@ -193,6 +193,7 @@
   ul.feed { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow: auto; font-size: 14px; }
   ul.feed li { display: grid; grid-template-columns: 64px 22px 1fr; gap: 8px; padding: 6px 8px; border-radius: 8px;
                border-left: 2px solid transparent; cursor: pointer; animation: fadein .35s ease; }
+  ul.feed li.empty { display: block; }
   ul.feed li:hover { background: rgba(56,217,255,.05); }
   ul.feed li .t { color: var(--dim); font-variant-numeric: tabular-nums; }
   ul.feed li .d { grid-column: 3; color: var(--muted); font-size: 12.5px; white-space: pre-wrap; overflow-wrap: anywhere;
@@ -227,6 +228,58 @@
   }
   @media (max-width: 520px) { .clock #time { font-size: 22px; } .weather .t { font-size: 22px; } .logo { font-size: 18px; letter-spacing: 4px; }
     .wrap { padding: 14px 16px 30px; } .links { grid-template-columns: 1fr; } .cmd-row .btn.primary { display: none; } }
+
+  /* ---------- Экран Джарвиса: панели, которые он выводит сам ---------- */
+  .screen { display: none; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; margin: 0 0 16px; }
+  .screen.on { display: grid; }
+  .spanel { position: relative; background: var(--panel); border: 1px solid var(--line2); border-left: 3px solid var(--accent);
+            border-radius: var(--r); padding: 14px 16px 12px; box-shadow: var(--glow); animation: pin .45s ease-out;
+            max-height: 70vh; overflow: auto; min-width: 0; }
+  .spanel.wide { grid-column: 1 / -1; }
+  .spanel.k-ok { border-left-color: var(--ok); } .spanel.k-warn { border-left-color: var(--warn); }
+  .spanel.k-error { border-left-color: var(--bad); }
+  .spanel h3 { margin: 0 26px 8px 0; font: 600 15px/1.3 var(--font); color: var(--text); }
+  .spanel h3 small { color: var(--dim); font-weight: 400; margin-left: 8px; font-size: 11px; }
+  .spanel .x { position: absolute; top: 8px; right: 10px; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 18px; }
+  .spanel .x:hover { color: var(--text); }
+  .spanel img { display: block; max-width: 100%; max-height: 46vh; border-radius: 10px; margin: 6px 0; }
+  .spanel table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 6px 0; }
+  .spanel th { text-align: left; color: var(--accent); font-weight: 500; border-bottom: 1px solid var(--line2); padding: 5px 6px; }
+  .spanel td { border-bottom: 1px solid var(--line); padding: 5px 6px; vertical-align: top; }
+  .spanel h1, .spanel h2 { font-size: 14px; letter-spacing: 1px; text-transform: none; margin: 10px 0 4px; color: var(--accent); }
+  .spanel h3 + * { margin-top: 0; } .spanel p { margin: 4px 0 8px; } .spanel ul, .spanel ol { margin: 4px 0 8px; padding-left: 20px; }
+  .spanel .callout { border-left: 3px solid var(--accent); padding: 4px 10px; background: rgba(56,217,255,.06); border-radius: 0 8px 8px 0; }
+  .spanel code { background: rgba(255,255,255,.06); padding: 0 4px; border-radius: 4px; }
+  .spanel pre { white-space: pre-wrap; background: rgba(0,0,0,.35); padding: 8px 10px; border-radius: 8px; font-size: 12.5px; }
+  .spanel .open { display: inline-block; margin-top: 6px; }
+  @keyframes pin { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: none; } }
+
+  /* ---------- Подсказки «что можно сказать» ---------- */
+  .suggest { margin-top: 8px; color: var(--dim); font-size: 13px; min-height: 18px; transition: opacity .4s; }
+  .suggest b { color: var(--muted); font-weight: 500; }
+
+  /* ---------- Слух ---------- */
+  .hear { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13.5px; }
+  .hear .k { color: var(--muted); } .hear .v { min-width: 0; overflow-wrap: anywhere; }
+  .meter { height: 8px; border-radius: 4px; background: rgba(255,255,255,.06); position: relative; overflow: hidden; margin-top: 4px; }
+  .meter i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 4px; transition: width .4s; }
+  .meter u { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--warn); }
+
+  /* ---------- Эффекты, которые включает Джарвис ---------- */
+  body.fx-pulse .wrap { animation: fxpulse 1.2s ease-out; }
+  body.fx-flash::after { content: ""; position: fixed; inset: 0; background: var(--accent); pointer-events: none; animation: fxflash .7s ease-out forwards; }
+  body.fx-scan::after { content: ""; position: fixed; left: 0; right: 0; height: 120px; pointer-events: none;
+    background: linear-gradient(transparent, rgba(56,217,255,.22), transparent); animation: fxscan 1.4s linear; }
+  body.fx-glitch .wrap { animation: fxglitch .6s steps(2) 2; }
+  body.fx-shake .wrap { animation: fxshake .5s; }
+  @keyframes fxpulse { 0% { filter: brightness(1.6) drop-shadow(0 0 30px var(--accent)); } 100% { filter: none; } }
+  @keyframes fxflash { from { opacity: .35; } to { opacity: 0; } }
+  @keyframes fxscan { from { top: -120px; } to { top: 100vh; } }
+  @keyframes fxglitch { 0% { transform: translate(2px,-1px); filter: hue-rotate(40deg); } 50% { transform: translate(-3px,1px); }
+                        100% { transform: none; filter: none; } }
+  @keyframes fxshake { 0%,100% { transform: none; } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); }
+                       60% { transform: translateX(-4px); } 80% { transform: translateX(4px); } }
+  @media (prefers-reduced-motion: reduce) { body[class*="fx-"] .wrap, body[class*="fx-"]::after { animation: none !important; } }
 </style>
 </head>
 <body>
@@ -252,10 +305,13 @@
       <button class="btn primary">Отправить</button>
     </form>
     <div class="chips" id="chips"></div>
+    <div class="suggest" id="suggest"></div>
     <div class="answer" id="answer"></div>
   </section>
 
   <section class="actions" id="actions"></section>
+
+  <section class="screen" id="screen" aria-live="polite"></section>
 
   <main class="grid">
     <section data-v="work" class="card w12 live">
@@ -274,6 +330,7 @@
         <div class="muted">Загрузка процессора, последние 5 минут</div></div>
     </section>
     <section data-v="work" class="card w3"><h2>Подключения</h2><div class="links" id="links"></div></section>
+    <section data-v="work" class="card w4"><h2>Слух · почему он (не) слышит</h2><div class="hear" id="hear"><span class="k">…</span></div></section>
     <section data-v="life" class="card"><h2>Сегодня <span class="count" id="tcount">0</span></h2><ul class="list" id="tasks"></ul>
       <form class="add" id="taskForm"><input type="text" id="taskTitle" placeholder="Новое дело">
         <select id="taskPrio"><option>обычный</option><option>высокий</option><option>низкий</option></select>
@@ -655,6 +712,78 @@ async function answerConfirm(yes) {
 $("confirmYes").onclick = () => answerConfirm(true);
 $("confirmNo").onclick = () => answerConfirm(false);
 setInterval(pollConfirm, 1200);
+
+// ---------- Экран Джарвиса ----------
+let SCREEN_REV = -1, FX_ID = 0;
+function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(","); }
+function setAccent(hex) {
+  const st = document.documentElement.style;
+  if (!hex) { ["--accent", "--accent2", "--glow", "--line", "--line2"].forEach(v => st.removeProperty(v)); return; }
+  const c = hexRgb(hex);
+  st.setProperty("--accent", hex); st.setProperty("--accent2", hex);
+  st.setProperty("--glow", `0 0 18px rgba(${c},.35)`); st.setProperty("--line", `rgba(${c},.14)`); st.setProperty("--line2", `rgba(${c},.28)`);
+}
+function panelHtml(p) {
+  const img = p.image ? `<img src="${esc(p.image)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : "";
+  const link = p.link ? `<a class="btn sm open" href="${esc(p.link)}" target="_blank" rel="noopener noreferrer">Открыть ↗</a>` : "";
+  // html собран на сервере из markdown с экранированием — чужой разметки в нём нет
+  return `<article class="spanel k-${esc(p.kind)}${p.size === "wide" ? " wide" : ""}">
+    <button class="x" title="Убрать" onclick="closePanel('${esc(p.id)}')">×</button>
+    <h3>${esc(p.title)}<small>${esc(p.at)}</small></h3>${img}${p.html || ""}${link}</article>`;
+}
+async function pollScreen() {
+  try {
+    const s = await api("/api/screen");
+    if (s.rev === SCREEN_REV) return;
+    SCREEN_REV = s.rev;
+    const box = $("screen");
+    box.innerHTML = s.panels.map(panelHtml).join("");
+    box.classList.toggle("on", s.panels.length > 0);
+    setAccent(s.ui.accent);
+    if (s.ui.effect && s.ui.effect_id !== FX_ID) {
+      const first = FX_ID === 0; FX_ID = s.ui.effect_id;
+      if (!first) { const cls = "fx-" + s.ui.effect; document.body.classList.add(cls); setTimeout(() => document.body.classList.remove(cls), 1500); }
+    }
+  } catch {}
+}
+async function closePanel(id) { await post("/api/screen", {op: "close", data: {id}}); pollScreen(); }
+pollScreen(); setInterval(pollScreen, 1000);
+
+// ---------- Слух ----------
+async function pollHear() {
+  try {
+    const d = await api("/api/diag");
+    const pct = v => Math.min(100, Math.round(v / Math.max(1, d.threshold * 3) * 100));
+    const ago = d.ago == null ? "" : d.ago < 60 ? ` · ${d.ago} с назад` : ` · ${Math.round(d.ago / 60)} мин назад`;
+    const lvl = d.last_level ? `${d.last_level} (порог ${d.threshold})${d.last_level < d.threshold * 1.3 ? " — тихо, можно поднять «Чувствительность микрофона»" : ""}` : "—";
+    $("hear").innerHTML = `
+      <span class="k">Сейчас</span><span class="v">${esc(d.state)}</span>
+      <span class="k">Распознавание</span><span class="v">${esc(d.stt)}${d.stt_note ? ` <span class="muted">(${esc(d.stt_note)})</span>` : ""}</span>
+      <span class="k">Шум комнаты</span><span class="v">${d.ambient} · порог микрофона ${d.threshold}</span>
+      <span class="k">Ваш голос</span><span class="v">${esc(lvl)}<div class="meter"><i style="width:${pct(d.last_level)}%"></i><u style="left:${pct(d.threshold)}%"></u></div></span>
+      <span class="k">Услышал</span><span class="v">${d.last_text ? `«${esc(d.last_text)}» <span class="muted">${esc(d.last_engine)}, ${d.last_stt} с${ago}</span>` : "—"}</span>
+      <span class="k">Своё эхо</span><span class="v">${d.echo_drops ? `отсеял ${d.echo_drops} раз${d.last_echo ? ` · «${esc(d.last_echo.slice(0, 50))}»` : ""}` : "не было"}</span>
+      <span class="k">Перебивание</span><span class="v">${esc(d.barge || "—")}</span>
+      <span class="k">Хлопки</span><span class="v">${d.claps ? `разбудили ${d.claps} раз` : "двойной хлопок — и он слушает"}</span>`;
+  } catch {}
+}
+pollHear(); setInterval(pollHear, 1500);
+
+// ---------- Подсказки: что можно сказать ----------
+const SUGGEST = ["Джарвис, сделай PDF: план запуска на октябрь с этапами и сроками", "Джарвис, что у меня на экране?",
+  "Джарвис, выведи на экран мои задачи из Notion таблицей", "Джарвис, сделай интерфейс красным",
+  "Джарвис, что нового в репозиториях?", "Джарвис, разбери почту: рассылки — в архив",
+  "Джарвис, напомни через час позвонить заказчику", "Хлопните дважды — и говорите без «Джарвис»",
+  "Джарвис, подожди… — перебить можно в любой момент", "Джарвис, какие задачи пришли из рабочих чатов?"];
+let SG = Math.floor(Math.random() * SUGGEST.length);
+function nextSuggest() {
+  const el = $("suggest"); if (!el) return;
+  const busy = $("now") && $("now").classList.contains("busy");
+  el.style.opacity = busy ? 0 : 1;
+  if (busy) return;
+  el.innerHTML = `Попробуйте: <b>«${esc(SUGGEST[SG++ % SUGGEST.length])}»</b>`;
+}
+nextSuggest(); setInterval(nextSuggest, 7000);
 
 tickClock(); setInterval(tickClock, 10000);
 refresh(); setInterval(refresh, 5000);

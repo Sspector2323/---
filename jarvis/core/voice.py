@@ -5,7 +5,7 @@ import tempfile
 import threading
 import time
 
-from . import config
+from . import config, hearing
 
 YES = ("да", "подтверждаю", "давай", "выполняй", "конечно", "ок", "окей", "угу", "ага", "yes", "делай")
 
@@ -41,6 +41,7 @@ class Voice:
             self.rec.adjust_for_ambient_noise(src, duration=1)
         self.ambient = self.rec.energy_threshold
         self._set_threshold()
+        hearing.DIAG.update(ambient=int(self.ambient), threshold=int(self.rec.energy_threshold))
         print(f"🎙 Шум комнаты {self.ambient:.0f}, порог микрофона {self.rec.energy_threshold:.0f}")
         self._engine = None
         self.last_stt = 0.0
@@ -52,6 +53,9 @@ class Voice:
 
     def beep(self):
         """Короткий сигнал «слушаю» — мгновенно, без синтеза речи."""
+        from . import sfx
+        if sfx.play("wake"):
+            return
         try:
             import winsound
             winsound.Beep(880, 120)
@@ -64,16 +68,33 @@ class Voice:
         self.rec.energy_threshold = min(1500.0, max(60.0, max(self.ambient * 1.4, 120.0) / sens))
 
     # ---------- Слух ----------
-    def listen(self, timeout: float | None = None, phrase_limit: float = 45) -> str | None:
+    spoken_text = ""      # что Джарвис говорил последним — чтобы не принять своё эхо за команду
+    spoken_until = 0.0
+    CLAP = "__clap__"     # двойной хлопок
+
+    def listen(self, timeout: float | None = None, phrase_limit: float = 45, accurate: bool = False) -> str | None:
+        """accurate=True — ждём именно команду (после «Джарвис», в продолжении разговора): точный движок."""
         self._set_threshold()  # чувствительность можно менять в настройках на ходу
+        hearing.DIAG.update(state="слушаю", threshold=int(self.rec.energy_threshold))
         try:
             with self.mic as src:
                 audio = self.rec.listen(src, timeout=timeout, phrase_time_limit=phrase_limit)
+            raw = audio.get_raw_data()
+            hearing.DIAG["last_level"] = hearing.phrase_level(raw, audio.sample_rate, audio.sample_width)
+            if config.CLAP_WAKE and hearing.is_double_clap(raw, audio.sample_rate, audio.sample_width,
+                                                           self.ambient):
+                hearing.DIAG["claps"] += 1
+                return self.CLAP
             t = time.time()
             try:
-                return self.rec.recognize_google(audio, language="ru-RU").strip()
+                text = hearing.transcribe(self.rec, audio, accurate=accurate)
             finally:
                 self.last_stt = time.time() - t
+            if text and time.time() < self.spoken_until + 3 and hearing.is_echo(text, self.spoken_text):
+                hearing.DIAG.update(echo_drops=hearing.DIAG["echo_drops"] + 1, last_echo=text)
+                print(f"   (это моё эхо: «{text[:60]}» — пропускаю)")
+                return None
+            return text
         except (self.sr.WaitTimeoutError, self.sr.UnknownValueError):
             return None
         except self.sr.RequestError:
@@ -140,36 +161,45 @@ class Voice:
         self.barge_text = None
         cached = self._cache_path(text) if cache else None
         with self.lock:
-            if cached and cached.exists():
-                self._play(str(cached), keep=True)
-                return
-            if cached:  # короткая фраза-перебивка: целиком и в кэш
-                path = self._synth(text)
-                if path:
-                    import shutil
-                    shutil.copy(path, cached)
-                    self._play(path)
-                elif config.OFFLINE_VOICE:
-                    self._say_offline(text)
-                return
-            # длинный ответ — по предложениям: пока звучит одно, следующее уже озвучивается
-            parts = _sentences(text)
-            box: dict = {}
-            nxt = threading.Thread(target=lambda: box.update(p=self._synth(parts[0])))
-            nxt.start()
-            for i in range(len(parts)):
-                nxt.join()
-                path = box.get("p")
-                if i + 1 < len(parts):
-                    box = {}
-                    nxt = threading.Thread(target=lambda j=i + 1, b=box: b.update(p=self._synth(parts[j])))
-                    nxt.start()
-                if path:
-                    self._play(path)
-                elif config.OFFLINE_VOICE:
-                    self._say_offline(parts[i])
-                if self.barge_text is not None:  # перебили — остальное не говорим
-                    break
+            hearing.DIAG["state"] = "говорю"
+            self.spoken_text, self.spoken_until = text, time.time() + 600
+            try:
+                self._say_locked(text, cached)
+            finally:
+                self.spoken_until = time.time()
+                hearing.DIAG["state"] = "слушаю"
+
+    def _say_locked(self, text: str, cached):
+        if cached and cached.exists():
+            self._play(str(cached), keep=True)
+            return
+        if cached:  # короткая фраза-перебивка: целиком и в кэш
+            path = self._synth(text)
+            if path:
+                import shutil
+                shutil.copy(path, cached)
+                self._play(path)
+            elif config.OFFLINE_VOICE:
+                self._say_offline(text)
+            return
+        # длинный ответ — по предложениям: пока звучит одно, следующее уже озвучивается
+        parts = _sentences(text)
+        box: dict = {}
+        nxt = threading.Thread(target=lambda: box.update(p=self._synth(parts[0])))
+        nxt.start()
+        for i in range(len(parts)):
+            nxt.join()
+            path = box.get("p")
+            if i + 1 < len(parts):
+                box = {}
+                nxt = threading.Thread(target=lambda j=i + 1, b=box: b.update(p=self._synth(parts[j])))
+                nxt.start()
+            if path:
+                self._play(path)
+            elif config.OFFLINE_VOICE:
+                self._say_offline(parts[i])
+            if self.barge_text is not None:  # перебили — остальное не говорим
+                break
 
     def _synth_edge(self, text: str) -> str:
         import edge_tts
@@ -256,8 +286,8 @@ class Voice:
         def recognize(frames) -> str:
             audio = self.sr.AudioData(b"".join(frames), src.SAMPLE_RATE, src.SAMPLE_WIDTH)
             try:
-                return self.rec.recognize_google(audio, language="ru-RU").strip()
-            except (self.sr.UnknownValueError, self.sr.RequestError):
+                return hearing.transcribe(self.rec, audio) or ""
+            except self.sr.RequestError:
                 return ""
 
         def drain():  # пока распознавали, в буфере накопился старый звук — выкидываем
@@ -271,7 +301,7 @@ class Voice:
         def rest_of_phrase() -> str:  # Джарвис замолчал — дослушиваем команду до конца
             try:
                 audio = self.rec.listen(src, timeout=1.2, phrase_time_limit=30)
-                return self.rec.recognize_google(audio, language="ru-RU").strip()
+                return hearing.transcribe(self.rec, audio, accurate=True) or ""
             except Exception:  # noqa: BLE001
                 return ""
 
@@ -321,12 +351,15 @@ class Voice:
                     hit, rest = self._barge_words(heard) if heard else (False, "")
                     if not hit:
                         if heard:
-                            print(f"   (слышу «{heard[:60]}» — это не мне, продолжаю)")
+                            echo = hearing.is_echo(heard, self.spoken_text)
+                            hearing.DIAG["barge"] = f"«{heard[:50]}» — {'моё эхо' if echo else 'не мне'}, говорю дальше"
+                            print(f"   (слышу «{heard[:60]}» — {'это моё эхо' if echo else 'это не мне'}, продолжаю)")
                         drain()
                         pre.clear()
                         loud = 0
                         continue
                     pygame.mixer.music.stop()
+                    hearing.DIAG["barge"] = f"перебили: «{heard[:50]}»"
                     more = rest_of_phrase()
                     self.barge_text = f"{rest} {more}".strip()
                     print(f"✋ Перебили: {heard}{' ' + more if more else ''}")
@@ -372,7 +405,7 @@ class TextIO:
     def prewarm(self, phrases):
         pass
 
-    def listen(self, timeout=None, phrase_limit=None) -> str | None:
+    def listen(self, timeout=None, phrase_limit=None, accurate=False) -> str | None:
         try:
             return input("🧑 Вы: ").strip() or None
         except EOFError:

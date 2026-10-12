@@ -22,3 +22,4 @@ pywebview>=5.3
 
 # Погода/сеть
 requests>=2.31
+opencv-python>=4.8   # камера для инструмента look

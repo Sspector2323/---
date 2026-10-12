@@ -76,6 +76,8 @@ def _short(v, n=90) -> str:
 
 LABELS = {
     "make_pdf": "Создаёт PDF-документ",
+    "show_on_screen": "Выводит панель на экран", "ui_control": "Меняет вид интерфейса",
+    "look": "Смотрит на экран или в камеру",
     # Джарвис
     "shutdown_computer": "Выключение компьютера", "restart_computer": "Перезагрузка компьютера",
     "sleep_computer": "Спящий режим", "lock_computer": "Блокирует экран", "cancel_shutdown": "Отменяет выключение",

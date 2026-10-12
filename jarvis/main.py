@@ -34,8 +34,8 @@ def hear_rest(io, text: str, text_mode: bool) -> str:
     if text_mode:
         return text
     for _ in range(4):
-        more = io.listen(timeout=1.0, phrase_limit=45)
-        if not more:
+        more = io.listen(timeout=1.0, phrase_limit=45, accurate=True)
+        if not more or more == getattr(io, "CLAP", None):
             break
         print(f"🎤 …{more}")
         text = f"{text} {more}"
@@ -52,17 +52,23 @@ def ask_with_fillers(io, ask, command: str, cancel=None) -> tuple[str | None, st
     worker = threading.Thread(target=lambda: box.update(answer=ask(command)), daemon=True)
     worker.start()
     worker.join(1.0)  # быстрые ответы — без перебивок
+    mode = config.FILLERS
     waits = fillers.waiting(config.USER_NAME)
     phrase = fillers.first(command, config.USER_NAME)
+    started, said_long = time.time(), False
     while worker.is_alive():
-        if not io.confirming:
+        if phrase and mode != "off" and not io.confirming:
             io.say(phrase, cache=True, quiet=True)
             if io.barge_text is not None:  # перебили во время «секунду…» — бросаем старую задачу
                 if cancel:
                     cancel()
                 return None, io.barge_text
-        worker.join(7.0)
-        phrase = next(waits)
+        phrase = None
+        worker.join(7.0 if mode == "chatty" else 1.0)
+        if mode == "chatty":
+            phrase = next(waits)
+        elif not said_long and time.time() - started > 25:  # одна фраза — и тишина; долгую задачу отметим раз
+            phrase, said_long = fillers.long(config.USER_NAME), True
     return box.get("answer", "Готово."), None
 
 
@@ -149,6 +155,8 @@ def main():
                 answer = brain.ask(text)
             except Exception as e:  # noqa: BLE001
                 activity.task_end(f"Ошибка: {e}", ok=False)
+                from core import sfx
+                sfx.play("error")
                 raise
             activity.task_end(answer)
             return answer
@@ -190,9 +198,18 @@ def main():
             heard, pending = pending, None
             follow_up_until = time.time() + 1  # после перебивания «Джарвис» говорить не нужно
         else:
-            heard = io.listen(timeout=None if text_mode else 5, phrase_limit=45)
+            heard = io.listen(timeout=None if text_mode else 5, phrase_limit=45,
+                              accurate=time.time() < follow_up_until)
         if not heard:
             continue
+        if heard == getattr(io, "CLAP", None):  # двойной хлопок — слушаю без слова «Джарвис»
+            from core import activity, sfx
+            activity.emit("voice", "Двойной хлопок — Джарвис слушает", "")
+            sfx.play("clap") or io.beep()
+            command = io.listen(timeout=8, phrase_limit=45, accurate=True)
+            if not command or command == io.CLAP:
+                continue
+            heard = f"{config.WAKE_WORDS[0] if config.WAKE_WORDS else 'джарвис'}, {command}"
         print(f"🎤 Вы: {heard}" + ("" if text_mode else f"   (⏱ распознал за {io.last_stt:.1f} с)"))
 
         if text_mode or time.time() < follow_up_until:
@@ -203,8 +220,8 @@ def main():
                 continue  # говорили не с Джарвисом
             if not command:
                 io.beep()  # «слушаю» — сигналом, это мгновенно
-                command = io.listen(timeout=8, phrase_limit=45)
-                if not command:
+                command = io.listen(timeout=8, phrase_limit=45, accurate=True)
+                if not command or command == getattr(io, "CLAP", None):
                     continue
                 print(f"🎤 Вы: {command}")
 
