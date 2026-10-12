@@ -55,7 +55,7 @@
       q: "Amor, ch'a nullo amato amar perdona", qru: "любовь, что любить велит любимым", tint: "235,210,220",
       fx: [F(0.5, 0.3, 0.75, 0.4, 0.016, 0.12, 3, 1, -0.6), F(0.55, 0.47, 0.6, 0.14, 0.012, 0.35, 7, 1, -0.4), F(0.5, 0.15, 0.6, 0.2, 0.012, 0.18, 4, -1, 0.3),
         BR(0.37, 0.75, 0.16, 0.16, 0.012, 0.6, 0, 0.37, 0.95), SW(0.6, 0.8, 0.12, 0.1, 0.07, 0.5, 1, 0.52, 0.88),
-        GLOW(0.62, 0.08, 0.08, 0.45, 1.4, [230, 30, 30]), GLOW(0.84, 0.62, 0.08, 0.45, 1.1, [230, 30, 30], 1), GLOW(0.2, 0.35, 0.06, 0.4, 1.7, [230, 30, 30], 3),
+        GLOW(0.62, 0.08, 0.08, 0.45, 1.4, [230, 30, 30]), GLOW(0.84, 0.62, 0.08, 0.45, 1.1, [230, 30, 30], 1), GLOW(0.2, 0.35, 0.05, 0.25, 1.7, [230, 30, 30], 3),
         GLOW(0.3, 0.22, 0.25, 0.18, 0.4, [190, 210, 230])],
       parts: { flakes: 90, streaks: 40, lightning: [0.35, 0.22] },
     },
@@ -111,7 +111,7 @@
       fx: [SW(0.25, 0.28, 0.3, 0.3, 0.045, 0.55, 0, 0.38, 0.43), SW(0.75, 0.28, 0.3, 0.3, -0.045, 0.55, 0, 0.62, 0.43),
         BR(0.5, 0.5, 0.2, 0.13, 0.01, 0.55, 0.8, 0.5, 0.62), SW(0.5, 0.4, 0.05, 0.04, 0.03, 1.4, 0, 0.5, 0.37),
         F(0.5, 0.62, 0.7, 0.07, 0.008, 0.15, 4, 1, 0), F(0.5, 0.85, 0.6, 0.15, 0.004, 0.05, 6, 1, 0),
-        GLOW(0.5, 0.38, 0.03, 0.5, 1.2, [255, 40, 30]), GLOW(0.5, 0.67, 0.1, 0.3, 0.5, [200, 30, 30])],
+        GLOW(0.5, 0.392, 0.012, 0.35, 1.2, [255, 60, 40]), GLOW(0.5, 0.67, 0.1, 0.3, 0.5, [200, 30, 30])],
       parts: { snow: 220, breath: [[0.43, 0.43], [0.5, 0.42], [0.57, 0.43]] },
     },
   ];
@@ -121,7 +121,7 @@
   // ======================================================================
   const glc = document.getElementById("gl"), fxc = document.getElementById("fx");
   const ctx = fxc.getContext("2d");
-  const gl = glc.getContext("webgl2", { premultipliedAlpha: false, antialias: false }) || null;
+  const gl = glc.getContext("webgl2", { premultipliedAlpha: false, antialias: false, preserveDrawingBuffer: true }) || null;
   const MAXFX = 16;
   const VS = `#version 300 es
 in vec2 p; out vec2 vUv; void main(){ vUv = vec2(p.x*0.5+0.5, 0.5-p.y*0.5); gl_Position = vec4(p,0.,1.); }`;
@@ -399,12 +399,17 @@ void main(){
     c.restore();
   }
 
-  let last = 0;
+  let last = 0, frozen = false;
   function frame(ts) {
     requestAnimationFrame(frame);
-    if (!ready || ts - last < 1000 / cfg.fps - 2) return;
+    if (frozen || !ready || ts - last < 1000 / cfg.fps - 2) return;
     last = ts;
-    const { now, ci, prog, outro } = clock(), t = now % 100000;
+    render(clock());
+  }
+  // отладка: покадровый рендер для записи видео
+  window.INFERNO_RENDER = (sec) => { frozen = true; if (!ready) return false; const save = cfg.t; cfg.t = sec; const c = clock(); c.now = sec; cfg.t = save; render(c); return true; };
+  function render(clk) {
+    const { now, ci, prog, outro } = clk, t = now % 100000;
     if (glOK) { gl.viewport(0, 0, glc.width, glc.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, fxc.width, fxc.height);
     for (const P of panels) {
@@ -420,7 +425,7 @@ void main(){
         drawParts(ctx, sc, st, t + idx * 37, idx);
         if (active && cfg.poets) {
           const x = -40 + prog * (WIN_W + 80), ph = t * 4.2, y = WIN_H - 26;
-          poet(ctx, x, y, 66, ph, "virgil"); poet(ctx, x - 30, y, 66, ph + 1.4, "dante");
+          poet(ctx, x, y, 72, ph, "virgil"); poet(ctx, x - 32, y, 72, ph + 1.4, "dante");
         }
         if (active && cfg.quotes) {
           const a = smooth(clamp(prog * 7, 0, 1)) * smooth(clamp((1 - prog) * 7, 0, 1));
