@@ -10,12 +10,14 @@ from .ai import AIResponder
 from .config import load_config
 from .handlers import setup_router
 from .repost import Reposter
-from .sheets import PlayersSheet
+from .sheets import PlayersSheet, SettingsStore
+from .welcome import Welcome
 
 ADMIN_COMMANDS = [
     BotCommand(command="broadcasts", description="Готовые рассылки"),
     BotCommand(command="send", description="Разослать сообщение (ответом на него)"),
     BotCommand(command="stats", description="Сколько людей в базе"),
+    BotCommand(command="welcome", description="Текущее приветствие"),
     BotCommand(command="admin", description="Подсказка по командам"),
     BotCommand(command="myid", description="Мой Telegram ID"),
     BotCommand(command="usermode", description="Режим обычного пользователя вкл/выкл"),
@@ -37,7 +39,10 @@ async def main() -> None:
     bot = Bot(cfg.telegram_token, default=DefaultBotProperties(link_preview_is_disabled=False))
     dp = Dispatcher()
     reposter = Reposter(cfg.source_channel, cfg.promo_channel_id, cfg.repost_mode, cfg.admin_ids)
-    dp.include_router(setup_router(cfg, sheet, ai, reposter))
+    welcome = Welcome(SettingsStore(sheet))
+    await welcome.load()
+    log.info("Приветствие: %s", "своё (из таблицы)" if welcome.current else "стандартное")
+    dp.include_router(setup_router(cfg, sheet, ai, reposter, welcome))
 
     # Снимаем вебхук n8n, иначе long polling не получит обновления
     await bot.delete_webhook(drop_pending_updates=False)
