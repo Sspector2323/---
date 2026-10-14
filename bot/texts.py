@@ -58,7 +58,7 @@ https://www.twitch.tv/vitussbritva
 
 ТГ (Жизнь): <a href="https://t.me/+37KAoUYkkVNiMjY6">Канал о жизни</a>
 
-ТГ (Казино/Промо): <a href="https://t.me/+r6wFfL29dtYzNzM6">Бонусы и Колесо</a>
+ТГ (Казино/Промо): <a href="https://t.me/+ifrIjCp4DkpiNDUy">Бонусы и Колесо</a>
 
 VIP-клуб: <a href="https://t.me/vituss2/2942">Вступить в VIP</a>
 
@@ -162,7 +162,7 @@ BROADCASTS = {
 Если ты не успел принять участие в прошлом розыгрыше, то через 10 минут стартует новое колесо. 
 
 Не пропусти!""",
-        "keyboard": [[('🔥ПЕРЕЙТИ НА КАНАЛ🔥', 'url', 'https://t.me/+r6wFfL29dtYzNzM6')]],
+        "keyboard": [[('🔥ПЕРЕЙТИ НА КАНАЛ🔥', 'url', 'https://t.me/+ifrIjCp4DkpiNDUy')]],
     },
     'stream': {
         "title": '🔴 Стрим начался',
