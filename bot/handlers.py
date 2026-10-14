@@ -14,7 +14,7 @@ from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.enums import ChatAction
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
 
 from .ai import AIResponder
 from .broadcast import copy_sender, run_broadcast, template_sender
@@ -38,6 +38,7 @@ ADMIN_HELP = (
     "и выбери: разослать копию всей базе или опубликовать в канал\n"
     "/stats — сколько людей в базе\n"
     "/welcome — показать текущее приветствие. Сменить: пришли пост и нажми «Сделать приветствием»\n"
+    "/app — открыть мини-приложение\n"
     "/myid — твой Telegram ID\n"
     "/usermode — включить/выключить режим обычного пользователя (проверить ИИ-ответы)\n\n"
     "Посты из канала Витуса бот сам пересылает в наш канал "
@@ -62,6 +63,19 @@ def setup_router(
         return user_id in cfg.admin_ids
 
     # ---------- админка ----------
+
+    @router.message(Command("app"))
+    async def open_app(message: Message):
+        if not cfg.webapp_url:
+            await message.answer("Приложение скоро появится 🙌")
+            return
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📱 Открыть приложение", web_app=WebAppInfo(url=cfg.webapp_url + "/"))],
+        ])
+        await message.answer(
+            "<b>Приложение Витуса</b>\n\nКазино и актуальные зеркала, колесо бонусов, база знаний и личный кабинет 👇",
+            parse_mode="HTML", reply_markup=kb,
+        )
 
     @router.message(Command("myid"))
     async def my_id(message: Message):
