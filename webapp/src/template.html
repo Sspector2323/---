@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Vituss Britva</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Manrope:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: Telegram mini-app in obsidian, platinum type, brushed-gold accents. Tabs: Главная · Казино · Фишки · Гайды · Кабинет; «Витус» opens from the home hero */
+:root{
+  color-scheme:dark;
+  --bg:#0B0B0D; --surface:#17171B; --surface-2:#1F1F25; --glass:rgba(233,231,227,.08); --line:rgba(233,231,227,.10);
+  --text:#F2F0EC; --text-2:#D4D1CB; --muted:#A7A39C; --dim:#7A766F;
+  --gold-1:#F7E3A3; --gold-2:#D9B25F; --gold-3:#9C7A33; --red:#E5484D; --ok:#7FD6A4;
+  --gold-grad:linear-gradient(135deg,var(--gold-1) 0%,var(--gold-2) 45%,var(--gold-3) 100%);
+  --plat-grad:linear-gradient(135deg,#FFFFFF 0%,#C9CCD3 50%,#7D828C 100%);
+  --display:"Unbounded","Arial Black",system-ui,sans-serif;
+  --body:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+img{max-width:100%}
+body{font-family:var(--body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+a{color:inherit}
+img{display:block}
+.app{max-width:480px;margin:0 auto;padding-inline:16px;padding-block:14px 104px;display:flex;flex-direction:column;gap:22px}
+.view{display:flex;flex-direction:column;gap:22px;animation:in .28s ease}
+@keyframes in{from{opacity:.4;transform:translateY(6px)}to{opacity:1;transform:none}}
+h1,h2,h3{margin:0;text-wrap:balance}
+h1{font-family:var(--display);font-size:25px;font-weight:700;line-height:1.14;background:var(--plat-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-family:var(--display);font-size:17px;font-weight:700;letter-spacing:.01em}
+h3{font-size:15px;font-weight:800}
+p{margin:0}
+.muted{color:var(--muted)}
+.label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:800}
+.sec{display:flex;flex-direction:column;gap:12px}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.link{font:800 13px var(--body);color:var(--gold-1);text-decoration:none;background:none;border:0;cursor:pointer;padding:0}
+.card{background:var(--surface);border-radius:20px;padding:16px;border:1px solid var(--line)}
+.gold-card{background:radial-gradient(120% 140% at 0% 0%,rgba(217,178,95,.16),transparent 60%),var(--surface);border:1px solid rgba(217,178,95,.3)}
+.btn{appearance:none;border:0;cursor:pointer;font:800 14px var(--body);border-radius:14px;padding:11px 16px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;color:var(--text);transition:transform .12s ease,filter .12s}
+.btn:active{transform:scale(.96)}
+.btn-gold{background:var(--gold-grad);color:#1A1306;box-shadow:0 6px 18px rgba(217,178,95,.22),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-plat{background:var(--plat-grad);color:#121214}
+.btn-glass{background:var(--glass);color:var(--text)}
+.btn-wide{width:100%}
+.btn:focus-visible,.tab:focus-visible,summary:focus-visible,a:focus-visible,.chip:focus-visible,.heart:focus-visible,.opt:focus-visible{outline:2px solid var(--gold-1);outline-offset:2px}
+.example{font-size:11px;color:var(--gold-1);font-weight:800;letter-spacing:.04em}
+.ico{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round;flex:none}
+.badge-ico{width:48px;height:48px;border-radius:50%;flex:none;display:grid;place-items:center;color:var(--gold-1);border:1px solid rgba(217,178,95,.45);background:radial-gradient(circle at 30% 25%,rgba(247,227,163,.18),rgba(217,178,95,.04))}
+.badge-ico .ico{width:24px;height:24px}
+.mono{font-family:var(--display);font-weight:900;font-size:15px;letter-spacing:.02em;background:var(--gold-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* top */
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.logo{display:flex;align-items:center;gap:10px}
+.logo .badge-ico{width:34px;height:34px}
+.logo b{font-family:var(--display);font-weight:900;font-size:15px;letter-spacing:.08em;background:var(--plat-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.age{font-weight:800;font-size:11px;border:1.5px solid var(--dim);color:var(--muted);border-radius:999px;padding:2px 8px}
+
+/* hero */
+.hero{position:relative;border-radius:26px;overflow:hidden;min-height:330px;display:flex;align-items:flex-end;border:1px solid var(--line);
+  background:radial-gradient(70% 60% at 75% 30%,rgba(217,178,95,.28),transparent 70%),linear-gradient(160deg,#1C1C21,#0B0B0D)}
+.hero img{position:absolute;right:-34px;bottom:0;height:100%;width:auto;max-width:none}
+.hero::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(11,11,13,.92) 0%,rgba(11,11,13,.55) 55%,rgba(11,11,13,0) 80%),linear-gradient(180deg,transparent 55%,rgba(11,11,13,.9))}
+.hero .in{position:relative;z-index:1;padding:18px;display:flex;flex-direction:column;gap:10px;max-width:78%}
+.hero p{color:var(--text-2);font-size:14px}
+.live-pill{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;background:rgba(0,0,0,.5);border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:12px;font-weight:800;text-decoration:none}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 0 0 rgba(229,72,77,.6);animation:pulse 1.8s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 8px rgba(229,72,77,0)}100%{box-shadow:0 0 0 0 rgba(229,72,77,0)}}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+
+/* promo */
+.promo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;border-radius:20px;padding:16px}
+.promo .code{font-family:var(--display);font-weight:900;font-size:17px;letter-spacing:.03em;white-space:nowrap;background:var(--gold-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.promo p{grid-column:1/-1;font-size:13px;color:var(--muted)}
+
+/* quick tiles */
+.quick{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px;text-decoration:none;display:flex;flex-direction:column;gap:8px;min-width:0;cursor:pointer;text-align:left;font:inherit;color:inherit;transition:transform .12s}
+.tile:active{transform:scale(.97)}
+.tile .ico{color:var(--gold-1);width:26px;height:26px}
+.tile strong{font-size:14px}
+.tile small{color:var(--muted);font-size:12px;line-height:1.35}
+
+/* offer carousel */
+.rail{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;margin-inline:-16px;padding:0 16px 4px;scrollbar-width:none}
+.rail::-webkit-scrollbar{display:none}
+.offer{flex:none;width:78%;scroll-snap-align:start;border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:10px;background:radial-gradient(90% 120% at 100% 0%,rgba(217,178,95,.22),transparent 60%),var(--surface);border:1px solid rgba(217,178,95,.28)}
+.offer .big{font-family:var(--display);font-weight:900;font-size:22px;line-height:1.1;background:var(--gold-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.offer .top-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.dots{display:flex;gap:6px;justify-content:center}
+.dots i{width:6px;height:6px;border-radius:50%;background:var(--glass);transition:all .2s}
+.dots i.on{width:18px;border-radius:3px;background:var(--gold-2)}
+
+/* logos */
+.lg{height:52px;border-radius:12px;background:linear-gradient(160deg,#202026,#0E0E11);border:1px solid var(--line);display:grid;place-items:center;overflow:hidden;flex:none}
+.lg img{max-width:78%;max-height:30px;object-fit:contain}
+.lg .wm{font-family:var(--display);font-weight:900;font-size:11px;letter-spacing:.04em;text-align:center;line-height:1.1;padding:0 6px;background:var(--plat-grad);-webkit-background-clip:text;background-clip:text;color:transparent;text-transform:uppercase}
+
+/* casino list */
+.search{width:100%;background:var(--surface);border:1px solid var(--line);color:var(--text);border-radius:14px;padding:12px 14px;font:600 15px var(--body)}
+.search::placeholder{color:var(--dim)}
+.chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
+.chips::-webkit-scrollbar{display:none}
+.chip{appearance:none;border:1px solid var(--line);cursor:pointer;font:800 13px var(--body);color:var(--text-2);background:var(--surface);border-radius:999px;padding:7px 12px;white-space:nowrap;flex:none}
+.chip[aria-pressed="true"]{background:var(--plat-grad);color:#111;border-color:transparent}
+.casinos{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.casino{background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.casino.open{border-color:rgba(217,178,95,.45)}
+.c-head{display:grid;grid-template-columns:92px minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px;cursor:pointer;width:100%;background:none;border:0;color:inherit;font:inherit;text-align:left}
+.c-head .lg{width:92px}
+.c-head strong{display:block;font-size:15px;letter-spacing:.02em}
+.c-head small{display:block;font-size:12px;color:var(--gold-1);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-head .chev{color:var(--muted);transition:transform .2s}
+.casino.open .chev{transform:rotate(180deg)}
+.c-body{padding:0 12px 14px;display:flex;flex-direction:column;gap:10px}
+.c-body p{font-size:13px;color:var(--text-2)}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tag{font-size:11px;font-weight:800;border-radius:999px;padding:3px 9px;background:var(--glass);color:var(--text-2)}
+.tag.gold{background:rgba(247,227,163,.14);color:var(--gold-1)}
+.codes{display:flex;gap:8px;flex-wrap:wrap}
+.code-chip{appearance:none;cursor:pointer;border:1px dashed rgba(217,178,95,.6);background:rgba(217,178,95,.08);color:var(--gold-1);font:800 12px ui-monospace,SFMono-Regular,Menlo,monospace;border-radius:10px;padding:6px 10px;display:inline-flex;gap:6px;align-items:center}
+.code-chip span{font-family:var(--body);color:var(--muted);font-weight:600}
+.c-acts{display:flex;gap:8px}
+.c-acts .btn-gold{flex:1}
+.heart{appearance:none;border:1px solid var(--line);background:var(--glass);width:44px;border-radius:14px;cursor:pointer;color:var(--muted);display:grid;place-items:center}
+.heart[aria-pressed="true"]{color:#FF6B87;background:rgba(255,107,135,.14);border-color:rgba(255,107,135,.4)}
+.heart .ico{width:20px;height:20px}
+.heart[aria-pressed="true"] .ico{fill:currentColor}
+.group-title{margin-top:6px}
+.empty{color:var(--muted);text-align:center;padding:12px}
+
+/* tools: wheel */
+.wheel-wrap{position:relative;width:min(300px,82vw);aspect-ratio:1;margin:4px auto 0;max-width:100%}
+.wheel{width:100%;height:100%;border-radius:50%;transition:transform 4.2s cubic-bezier(.12,.75,.1,1);box-shadow:0 0 0 6px #111,0 0 0 8px var(--gold-2),0 18px 50px rgba(217,178,95,.18)}
+.wheel svg{width:100%;height:100%}
+.pointer{position:absolute;left:50%;top:-6px;transform:translateX(-50%);width:0;height:0;border-left:13px solid transparent;border-right:13px solid transparent;border-top:24px solid var(--gold-1);filter:drop-shadow(0 3px 4px rgba(0,0,0,.6));z-index:2}
+.hub{position:absolute;inset:38%;border-radius:50%;background:var(--gold-grad);display:grid;place-items:center;font-family:var(--display);font-weight:900;color:#1A1306;font-size:14px;box-shadow:0 0 0 4px #0B0B0D}
+.result{text-align:center;display:flex;flex-direction:column;gap:6px;align-items:center}
+.result .big{font-family:var(--display);font-weight:900;font-size:22px;background:var(--gold-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* quiz */
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opt{appearance:none;border:1px solid var(--line);background:var(--surface-2);color:var(--text);border-radius:14px;padding:12px;font:700 14px var(--body);cursor:pointer;text-align:left;display:flex;gap:8px;align-items:center}
+.opt .ico{color:var(--gold-1)}
+.opt:active{transform:scale(.97)}
+.progress{height:4px;border-radius:2px;background:var(--glass);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--gold-grad);transition:width .3s}
+
+/* calc */
+.calc{display:grid;gap:12px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12px;color:var(--muted);font-weight:700}
+.field .val{font-family:var(--display);font-weight:700;font-size:15px;color:var(--text);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--gold-2)}
+.out{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.out div{background:var(--surface-2);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:2px}
+.out b{font-family:var(--display);font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;background:var(--gold-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.out span{font-size:11px;color:var(--muted)}
+
+/* vitus */
+.vit-hero{position:relative;border-radius:26px;overflow:hidden;height:330px;border:1px solid var(--line);background:radial-gradient(60% 55% at 50% 35%,rgba(217,178,95,.30),transparent 70%),linear-gradient(180deg,#1C1C21,#0B0B0D)}
+.vit-hero img{position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:100%;width:auto;max-width:none}
+.vit-hero .in{position:absolute;left:0;right:0;bottom:0;padding:18px;background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.92));display:flex;flex-direction:column;gap:4px}
+.facts{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;margin-inline:-16px;padding:0 16px 4px;scrollbar-width:none}
+.facts::-webkit-scrollbar{display:none}
+.fact{flex:none;width:72%;scroll-snap-align:start;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:8px;min-height:170px}
+.fact .num{font-family:var(--display);font-weight:900;font-size:24px;line-height:1.05;background:var(--gold-grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.fact p{font-size:13px;color:var(--text-2)}
+.fact .badge-ico{width:40px;height:40px}
+.post{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px;display:flex;gap:12px}
+.post .badge-ico{width:42px;height:42px}
+.post div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.post .meta{font-size:12px;color:var(--muted)}
+.socials{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.socials a{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 8px;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:8px;font-size:12px;font-weight:800}
+.socials .badge-ico{width:40px;height:40px}
+
+/* guide */
+details{background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+summary{list-style:none;cursor:pointer;padding:14px 16px;display:flex;align-items:center;gap:12px;font-weight:800}
+summary::-webkit-details-marker{display:none}
+summary .ico{color:var(--gold-1)}
+summary span{flex:1}
+summary::after{content:"+";color:var(--gold-1);font-size:22px;line-height:1;transition:transform .2s}
+details[open] summary::after{transform:rotate(45deg)}
+.body{padding:0 16px 16px;display:flex;flex-direction:column;gap:10px;color:var(--text-2)}
+.checklist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.checklist label{display:grid;grid-template-columns:24px 1fr;gap:10px;align-items:start;cursor:pointer}
+.checklist input{appearance:none;width:22px;height:22px;border-radius:7px;border:1.5px solid var(--gold-3);margin:1px 0 0;display:grid;place-items:center;cursor:pointer}
+.checklist input:checked{background:var(--gold-grad);border-color:transparent}
+.checklist input:checked::after{content:"✓";color:#1A1306;font-weight:900;font-size:13px}
+.checklist input:checked + span{color:var(--muted);text-decoration:line-through}
+.rules{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.warn{background:rgba(229,72,77,.1);border:1px solid rgba(229,72,77,.3);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--text)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--glass);border-radius:6px;padding:1px 6px;color:var(--gold-1)}
+.foot{font-size:11px;color:var(--dim);line-height:1.5}
+
+/* profile */
+.prof{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;border-radius:22px;padding:18px}
+.prof .ava{width:64px;height:64px;border-radius:50%;overflow:hidden;background:var(--gold-grad);display:grid;place-items:center;font-family:var(--display);font-weight:900;font-size:22px;color:#1A1306}
+.prof small{color:var(--text-2);font-size:13px}
+.prof .ava img{width:100%;height:100%;object-fit:cover}
+.level{display:flex;flex-direction:column;gap:8px}
+.level .row{justify-content:space-between;font-size:12px;color:var(--muted);font-weight:700}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:2px}
+.stat b{font-family:var(--display);font-size:20px;font-weight:900;font-variant-numeric:tabular-nums}
+.stat span{font-size:11px;color:var(--muted)}
+.achs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.ach{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 8px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;font-size:11px;font-weight:800;color:var(--dim)}
+.ach .badge-ico{width:44px;height:44px;color:var(--dim);border-color:var(--line);background:var(--glass)}
+.ach.on{color:var(--text)}
+.ach.on .badge-ico{color:var(--gold-1);border-color:rgba(217,178,95,.5);background:radial-gradient(circle at 30% 25%,rgba(247,227,163,.25),rgba(217,178,95,.05));animation:pop .4s ease}
+@keyframes pop{50%{transform:scale(1.15)}}
+.subs{display:flex;flex-direction:column;gap:8px}
+.sub{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px;display:flex;align-items:center;gap:12px}
+.sub .badge-ico{width:38px;height:38px}
+.sub div{flex:1;min-width:0}
+.sub small{display:block;color:var(--muted);font-size:12px}
+.ok{font-size:12px;font-weight:800;color:var(--ok)}
+
+/* tab bar */
+.tabbar{position:fixed;left:0;right:0;bottom:0;padding:8px 10px calc(8px + env(safe-area-inset-bottom, 0px));background:rgba(11,11,13,.94);backdrop-filter:blur(12px);border-top:1px solid var(--line);display:flex;justify-content:center;z-index:5}
+.tabbar nav{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;max-width:480px;width:100%}
+.tab{appearance:none;border:0;background:transparent;color:var(--dim);font:800 11px var(--body);display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;border-radius:12px;cursor:pointer}
+.tab[aria-selected="true"]{color:var(--text)}
+.tab[aria-selected="true"] .ico{color:var(--gold-1)}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--gold-grad);color:#1A1306;font-weight:800;padding:9px 16px;border-radius:999px;font-size:13px;z-index:6;box-shadow:0 8px 24px rgba(0,0,0,.5);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.view,.dot,.ach.on .badge-ico{animation:none}.wheel{transition-duration:.01s}}
+</style>
+
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-cards" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8 9v6M12 9v6M16 9v6"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2v5M12 17v5M2 12h5M17 12h5M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></symbol>
+  <symbol id="i-crown" viewBox="0 0 24 24"><path d="M3 8l4 4 5-7 5 7 4-4-2 11H5z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l6 3.5-6 3.5z"/></symbol>
+  <symbol id="i-mirror" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 6 0l3-3a4 4 0 0 0-6-6l-1 1"/><path d="M14 10a4 4 0 0 0-6 0l-3 3a4 4 0 0 0 6 6l1-1"/></symbol>
+  <symbol id="i-gift" viewBox="0 0 24 24"><path d="M3 9h18v4H3zM5 13h14v8H5zM12 9v12M12 9c-2-4-6-4-6-1s6 1 6 1c2-4 6-4 6-1s-6 1-6 1"/></symbol>
+  <symbol id="i-wheel" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><path d="M12 3v7M12 14v7M3 12h7M14 12h7M5.6 5.6l5 5M13.4 13.4l5 5M18.4 5.6l-5 5M10.6 13.4l-5 5"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></symbol>
+  <symbol id="i-calc" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h2M12 12h2M16 12v5M8 16h2M12 16h2"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></symbol>
+  <symbol id="i-diamond" viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 12L2 9zM2 9h20M9 3l3 18 3-18"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9-9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c-2 4.6-9 9-9 9z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3L3 10.5l7 2.5 2.5 7z M10 13l11-10"/></symbol>
+  <symbol id="i-live" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8"/></symbol>
+  <symbol id="i-yt" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="M10 9l5 3-5 3z"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".6"/></symbol>
+  <symbol id="i-vk" viewBox="0 0 24 24"><path d="M3 7h3c1 4 3 6 4 6V7h3v4c1 0 3-2 4-4h3c-1 3-3 5-4 6 1 1 3 3 4 5h-3c-1-2-3-4-4-4v4h-1c-6 0-9-5-9-11z"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+  <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+</svg>
+
+<div class="app">
+  <div class="top">
+    <div class="logo"><span class="badge-ico"><span class="mono" style="font-size:12px">VB</span></span><b>VITUSS BRITVA</b></div>
+    <span class="age" title="Только для совершеннолетних">18+</span>
+  </div>
+
+  <!-- ===== ГЛАВНАЯ ===== -->
+  <section class="view" id="v-home">
+    <div class="hero">
+      <img src="{{img:vit_main}}" alt="Витус Бритва">
+      <div class="in">
+        <a class="live-pill" href="https://kick.com/vituss" target="_blank" rel="noopener"><span class="dot" aria-hidden="true"></span>Стримы на Kick</a>
+        <h1>Играй с умом, выигрывай с настроением</h1>
+        <p>Казино Витуса, бонусы, промокоды и фишки, которые экономят деньги.</p>
+        <div class="row">
+          <a class="btn btn-gold" href="https://kick.com/vituss" target="_blank" rel="noopener">Смотреть стрим</a>
+          <button class="btn btn-glass" type="button" data-go="vitus">О Витусе</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="promo gold-card">
+      <div><span class="label">Промокод при регистрации</span><div class="code" id="code">VITUSSRAZOR</div></div>
+      <button class="btn btn-gold" type="button" data-copy="VITUSSRAZOR"><svg class="ico" style="width:18px;height:18px"><use href="#i-copy"/></svg>Копировать</button>
+      <p>Вводи до первого депозита и забирай бонусы.</p>
+    </div>
+
+    <div class="sec">
+      <div class="sec-head"><h2>Топ бонусы недели</h2><button class="link" type="button" data-go="casino">Все казино ›</button></div>
+      <div class="rail" id="offers"></div>
+      <div class="dots" id="offer-dots"></div>
+    </div>
+
+    <div class="quick">
+      <button class="tile" type="button" data-go="tools" data-anchor="t-wheel"><svg class="ico"><use href="#i-wheel"/></svg><strong>Колесо бонусов</strong><small>Крутани и узнай, где играть сегодня</small></button>
+      <button class="tile" type="button" data-go="tools" data-anchor="t-quiz"><svg class="ico"><use href="#i-target"/></svg><strong>Подбор казино</strong><small>3 вопроса и готовая рекомендация</small></button>
+      <button class="tile" type="button" data-go="tools" data-anchor="t-calc"><svg class="ico"><use href="#i-calc"/></svg><strong>Калькулятор</strong><small>Сколько отыгрывать бонус</small></button>
+      <a class="tile" href="https://t.me/+x0SQ67y_4lxhY2Uy" target="_blank" rel="noopener"><svg class="ico"><use href="#i-gift"/></svg><strong>Все бездепы</strong><small>Бонусы и бездепы в одном канале</small></a>
+    </div>
+
+    <div class="sec">
+      <div class="sec-head"><h2>Из канала</h2><button class="link" type="button" data-go="vitus" data-anchor="feed">Вся лента ›</button></div>
+      <div id="feed-preview" class="sec"></div>
+    </div>
+  </section>
+
+  <!-- ===== КАЗИНО ===== -->
+  <section class="view" id="v-casino" hidden>
+    <div class="sec"><h1>Казино Витуса</h1><p class="muted">Актуальные зеркала из закрепа. Нажми на казино, чтобы увидеть бонусы и коды.</p></div>
+    <label for="q" style="position:absolute;left:-9999px">Поиск казино</label>
+    <input id="q" class="search" type="search" placeholder="Найти казино" autocomplete="off">
+    <div class="chips" id="filters">
+      <button class="chip" type="button" aria-pressed="true" data-filter="all">Все</button>
+      <button class="chip" type="button" aria-pressed="false" data-filter="fav">♥ Избранное</button>
+      <button class="chip" type="button" aria-pressed="false" data-filter="bonus">Большой бонус</button>
+      <button class="chip" type="button" aria-pressed="false" data-filter="fs">Много FS</button>
+      <button class="chip" type="button" aria-pressed="false" data-filter="codes">Свои бонускоды</button>
+      <button class="chip" type="button" aria-pressed="false" data-filter="noverif">Без верификации</button>
+      <button class="chip" type="button" aria-pressed="false" data-filter="proven">Проверены временем</button>
+    </div>
+    <ul class="casinos" id="list"></ul>
+    <p class="empty" id="empty" hidden></p>
+    <a class="btn btn-plat btn-wide" href="https://t.me/+x0SQ67y_4lxhY2Uy" target="_blank" rel="noopener">Все бонусы и бездепы</a>
+    <p class="foot">Сайт не открывается? Смени регион в VPN или выключи его. Ссылки обновляются вместе с закрепом.</p>
+  </section>
+
+  <!-- ===== ФИШКИ ===== -->
+  <section class="view" id="v-tools" hidden>
+    <div class="sec"><h1>Фишки</h1><p class="muted">Колесо, подбор казино и калькулятор отыгрыша.</p></div>
+
+    <div class="card sec" id="t-wheel">
+      <div class="sec-head"><h2>Колесо бонусов</h2><span class="label" id="spins-left"></span></div>
+      <div class="wheel-wrap">
+        <div class="pointer" aria-hidden="true"></div>
+        <div class="wheel" id="wheel"></div>
+        <div class="hub">VB</div>
+      </div>
+      <button class="btn btn-gold btn-wide" type="button" id="spin">Крутить</button>
+      <div class="result" id="spin-result" hidden></div>
+    </div>
+
+    <div class="card sec" id="t-quiz">
+      <h2>Подбор казино</h2>
+      <div class="progress"><i id="quiz-bar" style="width:0%"></i></div>
+      <div id="quiz"></div>
+    </div>
+
+    <div class="card sec" id="t-calc">
+      <h2>Калькулятор бонуса</h2>
+      <div class="calc">
+        <div class="field"><label for="dep">Депозит <span class="val" id="dep-v"></span></label><input id="dep" type="range" min="500" max="50000" step="500" value="3000"></div>
+        <div class="field"><label for="pct">Бонус к депозиту <span class="val" id="pct-v"></span></label><input id="pct" type="range" min="50" max="500" step="25" value="250"></div>
+        <div class="field"><label for="wag">Вейджер <span class="val" id="wag-v"></span></label><input id="wag" type="range" min="1" max="60" step="1" value="35"></div>
+        <div class="out">
+          <div><b id="o-bonus"></b><span>бонус на счёт</span></div>
+          <div><b id="o-total"></b><span>всего на балансе</span></div>
+          <div><b id="o-wager"></b><span>нужно прокрутить</span></div>
+          <div><b id="o-spins"></b><span>спинов по 50 ₽</span></div>
+        </div>
+        <p class="foot">Отыгрыш считается от суммы бонуса. Точные условия смотри на сайте казино.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== ГАЙДЫ ===== -->
+  <section class="view" id="v-guide" hidden>
+    <div class="sec"><h1>Справочник игрока</h1><p class="muted">Отмечай шаги, прогресс сохранится.</p></div>
+
+    <details open>
+      <summary><svg class="ico"><use href="#i-star"/></svg><span>Промокод: 5 шагов</span><b class="label" data-prog="promo"></b></summary>
+      <div class="body">
+        <ul class="checklist" data-list="promo">
+          <li><label><input type="checkbox"><span><b>Регистрация</b> по ссылке из раздела «Казино». Код только для новых игроков.</span></label></li>
+          <li><label><input type="checkbox"><span><b>Найди поле «Промокод»</b> при регистрации или в разделе «Бонусы».</span></label></li>
+          <li><label><input type="checkbox"><span><b>Введи</b> <code>VITUSSRAZOR</code> заглавными.</span></label></li>
+          <li><label><input type="checkbox"><span><b>Активируй</b> кнопкой «Применить» до депозита.</span></label></li>
+          <li><label><input type="checkbox"><span><b>Внеси депозит</b> на сумму из условий, бонус придёт сам.</span></label></li>
+        </ul>
+        <p class="warn">Код не сработал? Не депай. Напиши в Live chat казино, активируют вручную.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary><svg class="ico"><use href="#i-diamond"/></svg><span>Депозит с крипты</span><b class="label" data-prog="crypto"></b></summary>
+      <div class="body">
+        <p>Карту банк рано или поздно заблокирует. Крипта приходит за 5–10 минут.</p>
+        <ul class="checklist" data-list="crypto">
+          <li><label><input type="checkbox"><span>Аккаунт на <b>Bybit</b> или <b>KuCoin</b>, верификация 5–10 минут.</span></label></li>
+          <li><label><input type="checkbox"><span>Купи <b>USDT TRC20</b> через P2P у продавцов с галочкой и 1000+ сделок.</span></label></li>
+          <li><label><input type="checkbox"><span>В казино выбери <b>Tether TRC20</b>, скопируй адрес.</span></label></li>
+          <li><label><input type="checkbox"><span>Выведи с биржи на этот адрес, сеть <b>TRC20</b>.</span></label></li>
+          <li><label><input type="checkbox"><span>Вывод на карту: P2P → «Продажа USDT».</span></label></li>
+        </ul>
+        <p class="warn">Ошибёшься с сетью, и деньги пропадут. Не переводи USDT, пока не увидишь деньги на карте.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary><svg class="ico"><use href="#i-mirror"/></svg><span>Сайт не открывается</span></summary>
+      <div class="body"><p>Ссылки в разделе «Казино» обновляются из закрепа с актуальными зеркалами. Если всё равно бесконечная загрузка, смени регион в VPN или выключи его.</p></div>
+    </details>
+
+    <details>
+      <summary><svg class="ico"><use href="#i-clock"/></svg><span>Вейджер и сроки</span></summary>
+      <div class="body"><ul class="rules"><li><b>Вейджер</b> обычно x30–x40: столько раз нужно прокрутить сумму бонуса.</li><li><b>Срок</b> бонуса часто 72 часа.</li><li><b>Один бонус на аккаунт.</b> Второй аккаунт ведёт к бану.</li></ul>
+      <button class="btn btn-glass" type="button" data-go="tools" data-anchor="t-calc">Посчитать в калькуляторе</button></div>
+    </details>
+
+    <details>
+      <summary><svg class="ico"><use href="#i-shield"/></svg><span>Играй с умом</span></summary>
+      <div class="body"><ul class="rules"><li><b>Это хобби, а не работа.</b> В казино заходят за эмоциями.</li><li><b>Не играй на последние.</b> Ставь столько, сколько не жалко.</li><li><b>Знай меру.</b> Бюджет и время определи заранее.</li><li><b>Только с чистой головой</b> и в свободное время.</li></ul></div>
+    </details>
+    <p class="foot">Условия бонусов могут измениться без предупреждения. Бонусы используются на свой риск. 18+</p>
+  </section>
+
+  <!-- ===== ВИТУС (из героя на главной) ===== -->
+  <section class="view" id="v-vitus" hidden>
+    <button class="link" type="button" data-go="home" style="align-self:flex-start">‹ Назад</button>
+    <div class="vit-hero">
+      <img src="{{img:vit_main}}" alt="Витус Бритва">
+      <div class="in"><span class="label">Стример</span><h1>Витус Бритва</h1></div>
+    </div>
+    <div class="sec">
+      <div class="sec-head"><h2>Интересные факты</h2><span class="label">листай ›</span></div>
+      <div class="facts">
+        <div class="fact"><span class="badge-ico"><svg class="ico"><use href="#i-star"/></svg></span><span class="label">Занос на стриме</span><span class="num">2 480 000 ₽</span><p>x31 при ставке 80 000 ₽. Подпись к посту: «Хайрольчик пошёл)»</p></div>
+        <div class="fact"><span class="badge-ico"><svg class="ico"><use href="#i-film"/></svg></span><span class="label">Интро</span><h3>«Феникс»</h3><p>6-минутный фильм, который открывает каждый стрим.</p><a class="link" href="https://youtu.be/jbjOIOpmNTY" target="_blank" rel="noopener">Смотреть ›</a></div>
+        <div class="fact"><span class="badge-ico"><svg class="ico"><use href="#i-cards"/></svg></span><span class="label">Свой слот</span><h3>Эксклюзив</h3><p>Слот, сделанный специально для зрителей стрима.</p></div>
+        <div class="fact"><span class="badge-ico"><svg class="ico"><use href="#i-mic"/></svg></span><span class="label">Подкасты</span><h3>Имрам и Доктор Лазарев</h3><p>Подкаст с Имрамом уже вышел, с Доктором Лазаревым скоро.</p></div>
+        <div class="fact"><span class="badge-ico"><svg class="ico"><use href="#i-crown"/></svg></span><span class="label">VIP-клуб</span><h3>Личный менеджер</h3><p>Особые бонусы и инсайды для участников клуба.</p><a class="link" href="https://t.me/vituss2/2942" target="_blank" rel="noopener">Правила ›</a></div>
+      </div>
+    </div>
+    <div class="sec" id="feed">
+      <div class="sec-head"><h2>Лента канала</h2><a class="link" href="https://t.me/vtss2" target="_blank" rel="noopener">@vtss2 ›</a></div>
+      <div id="feed-full" class="sec"></div>
+    </div>
+    <div class="sec">
+      <h2>Витус в соцсетях</h2>
+      <div class="socials">
+        <a href="https://t.me/vitussmain" target="_blank" rel="noopener"><span class="badge-ico"><svg class="ico"><use href="#i-send"/></svg></span>Telegram</a>
+        <a href="https://kick.com/vituss" target="_blank" rel="noopener"><span class="badge-ico"><svg class="ico"><use href="#i-live"/></svg></span>Kick</a>
+        <a href="https://youtube.com/@vitussmain" target="_blank" rel="noopener"><span class="badge-ico"><svg class="ico"><use href="#i-yt"/></svg></span>YouTube</a>
+        <a href="https://www.instagram.com/vituskik" target="_blank" rel="noopener"><span class="badge-ico"><svg class="ico"><use href="#i-cam"/></svg></span>Instagram</a>
+        <a href="https://vk.com/vitussmain" target="_blank" rel="noopener"><span class="badge-ico"><svg class="ico"><use href="#i-vk"/></svg></span>VK</a>
+        <a href="https://www.twitch.tv/vitussbritva" target="_blank" rel="noopener"><span class="badge-ico"><svg class="ico"><use href="#i-play"/></svg></span>Twitch</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== КАБИНЕТ ===== -->
+  <section class="view" id="v-profile" hidden>
+    <div class="prof gold-card">
+      <div class="ava" id="p-ava">VB</div>
+      <div><h2 id="p-name">Игрок</h2><small id="p-user">Открой приложение из бота</small></div>
+    </div>
+    <div class="card level">
+      <div class="row"><span>Уровень игрока: <b style="color:var(--gold-1)" id="lvl-name"></b></span><span id="lvl-xp"></span></div>
+      <div class="progress"><i id="lvl-bar"></i></div>
+      <p class="foot">Открывай достижения, чтобы расти в уровне.</p>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="st-fav">0</b><span>в избранном</span></div>
+      <div class="stat"><b id="st-spins">0</b><span>прокруток колеса</span></div>
+      <div class="stat"><b id="st-ach">0</b><span>достижений</span></div>
+    </div>
+    <div class="sec"><h2>Достижения</h2><div class="achs" id="achs"></div></div>
+    <div class="sec">
+      <h2>Подписки</h2>
+      <div class="subs">
+        <div class="sub"><span class="badge-ico"><svg class="ico"><use href="#i-live"/></svg></span><div><b>Оповещения о стримах</b><small>@vtss2</small></div><span data-sub="stream"><a class="btn btn-plat" href="https://t.me/vtss2" target="_blank" rel="noopener">Подписаться</a></span></div>
+        <div class="sub"><span class="badge-ico"><span class="mono" style="font-size:12px">VB</span></span><div><b>Канал ВИТУС</b><small>Стримы, заносы, розыгрыши</small></div><span data-sub="promo"><a class="btn btn-plat" href="https://t.me/+r6wFfL29dtYzNzM6" target="_blank" rel="noopener">Подписаться</a></span></div>
+        <div class="sub"><span class="badge-ico"><svg class="ico"><use href="#i-gift"/></svg></span><div><b>Бонусы и бездепы</b><small>Розыгрыши каждый день</small></div><a class="btn btn-plat" href="https://t.me/+x0SQ67y_4lxhY2Uy" target="_blank" rel="noopener">Открыть</a></div>
+        <div class="sub"><span class="badge-ico"><svg class="ico"><use href="#i-crown"/></svg></span><div><b>VIP-клуб</b><small>Личный менеджер</small></div><a class="btn btn-gold" href="https://t.me/vituss2/2942" target="_blank" rel="noopener">Вступить</a></div>
+        <div class="sub"><span class="badge-ico"><svg class="ico"><use href="#i-cam"/></svg></span><div><b>Instagram</b><small>@vituskik</small></div><a class="btn btn-plat" href="https://instagram.com/vituskik" target="_blank" rel="noopener">Подписаться</a></div>
+        <div class="sub"><span class="badge-ico"><svg class="ico"><use href="#i-yt"/></svg></span><div><b>Новый YouTube</b><small>@vitussmain</small></div><a class="btn btn-plat" href="https://youtube.com/@vitussmain" target="_blank" rel="noopener">Подписаться</a></div>
+        <div class="sub"><span class="badge-ico"><svg class="ico"><use href="#i-vk"/></svg></span><div><b>ВКонтакте</b><small>vk.com/vitussmain</small></div><a class="btn btn-plat" href="https://vk.com/vitussmain" target="_blank" rel="noopener">Подписаться</a></div>
+      </div>
+    </div>
+    <div class="sec"><div class="sec-head"><h2>Избранные казино</h2><button class="link" type="button" data-go="casino">Добавить ›</button></div><ul class="casinos" id="favs"></ul></div>
+  </section>
+</div>
+
+<div class="tabbar">
+  <nav role="tablist" aria-label="Разделы">
+    <button class="tab" role="tab" data-go="home" aria-selected="true"><svg class="ico"><use href="#i-home"/></svg>Главная</button>
+    <button class="tab" role="tab" data-go="casino" aria-selected="false"><svg class="ico"><use href="#i-cards"/></svg>Казино</button>
+    <button class="tab" role="tab" data-go="tools" aria-selected="false"><svg class="ico"><use href="#i-spark"/></svg>Фишки</button>
+    <button class="tab" role="tab" data-go="guide" aria-selected="false"><svg class="ico"><use href="#i-book"/></svg>Гайды</button>
+    <button class="tab" role="tab" data-go="profile" aria-selected="false"><svg class="ico"><use href="#i-user"/></svg>Кабинет</button>
+  </nav>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const LOGOS = {{LOGOS}};
+// Актуальные зеркала из закрепа серого канала
+const CASINOS = [
+  {id:"panda",name:"PANDA",url:"https://nymph-pahd4.com/ad0pz4lbdr",bonus:"до 250% + 1500 FS",pct:250,fs:1500,text:"До 250% + 1500 FS на входе."},
+  {id:"faro",name:"FARO",url:"https://combonorth.space/aeqangp2uc",bonus:"до 333% + 1111 FS",pct:333,fs:1111,text:"Бонус к первому депозиту до 333% + 1111 FS. Кешбэк до 22%.",tags:["Кешбэк до 22%"]},
+  {id:"apex",name:"APEX",url:"http://9reenhouse-7apeks.com/adxjb5j5eu",bonus:"до 250% + 900 FS",pct:250,fs:900,text:"Бонус к первому депозиту до 250% + 900 FS на входе.",codes:[["SPIN","промо на максимум"]]},
+  {id:"eva",name:"EVA",url:"https://string-26eva.com/adevxju8q2",bonus:"900 FS + 250%",pct:250,fs:900,text:"Особый подарок при регистрации: 900 FS + 250%.",codes:[["SPIN","вэлком пак"],["SPIN1","бездеп"]],tags:["Бездеп"]},
+  {id:"fenix",name:"FENIX",url:"https://fnx-abs.net/aexq9appw9",bonus:"до 500% + 400 FS",pct:500,fs:400,text:"Бонус к первому депозиту до 500% + 400 FS. Розыгрыш BMW X5 и гаджетов Apple.",codes:[["START100","100 FS"]],tags:["Розыгрыш BMW X5"]},
+  {id:"joy",name:"JOY",logo:"joycasino",url:"https://vituss.swiftours.com/ru/registration?partner=p458p937pc6d6",bonus:"до 200% + 200 FS",pct:200,fs:200,text:"Бонус до 200% и 200 FS к первому депозиту. Ежедневные релоады без вейджера депозита. Слоты с 99% RTP.",codes:[["ZEUSLUCK","100 FS в Zeus vs Hades за деп 1500 ₽, вейджер 15"]],tags:["Релоады без вейджера","RTP 99%"]},
+  {id:"beer",name:"BEER",url:"https://beerworld.site/?refpartnerid=BEER-PARTNER6913&refcode=VITUSSRAZOR",bonus:"125% + до 300 FS",pct:125,fs:300,text:"125% к первому депозиту и до 300 FS к каждому депозиту.",codes:[["VITUSSRAZOR","промокод"]]},
+  {id:"vodka",name:"VODKA",logo:"vodka",url:"https://go676039.com?id=5819",bonus:"150% + до 300 FS",pct:150,fs:300,text:"Без верификации. 150% на первый депозит. 50 FS за привязку Telegram, до 300 FS без вагера за депозит.",tags:["Без верификации","FS без вагера"],noverif:true},
+  {id:"vavada",name:"VAVADA",logo:"vavada",url:"https://gate707.com/?promo=1d257033-b79a-4f7c-8ef5-8914be919441&target=register",bonus:"Проверено Витусом",text:"«Проверил сам временем. Крупнейшие суммы выводят без проблем.»",tags:["Выбор Витуса"],proven:true},
+  {id:"stake",name:"STAKE",logo:"stake",url:"https://stake3097.com/?c=fb94dbaa6f&offer=lifeisgood"},
+  {id:"honey",name:"HONEY MONEY",logo:"honey",url:"https://honey-abs.net/aetug2rq0c"},
+  {id:"hype",name:"CASINOHYPE",url:"https://cb-hub.xyz/aebwnvbktg"},
+  {id:"auf",name:"AUF",logo:"auf",url:"https://kg-node.ink/aerlrn7qzm"},
+  {id:"unlim",name:"UNLIM",logo:"unlim",url:"https://ul-space.com/aect2lq5u1"},
+  {id:"cboss",name:"CRYPTO BOSS",url:"https://kg-node.xyz/aens97ugxz"},
+  {id:"kush",name:"KUSH CASINO",logo:"kush",url:"https://neo7-cr9t-ksh.com/dd2viffu3"},
+  {id:"banda",name:"BANDA",logo:"banda",url:"http://7-8abda-modu1e.com/d2a203d1e"},
+  {id:"leebet",name:"LEEBET",logo:"leebet",url:"https://play-leebet-4th.com/d0b08c2a8"},
+  {id:"fortuna",name:"PLAY FORTUNA",logo:"fortuna",url:"https://fortuna-promo1.com/alt/playfortuna/registration?3ea163a78bc9ffda1db3dc10a508bc4b&promocode=vitussrazor",proven:true,group:"proven"},
+  {id:"jozz",name:"JOZZ",logo:"jozz",url:"https://jozz-promo1.com/alt/jozz/registration?cc7df24eca43247b8c748824b45906d8&promocode=vitussrazor",proven:true,group:"proven"},
+  {id:"booi",name:"BOOI",logo:"booi",url:"https://booi-promo.com/alt/booi/sign-up?54c995dbb0f24bce840fb88acbb083ee&promocode=vitussrazor",proven:true,group:"proven"}
+];
+
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d){ try { const v = localStorage.getItem("vb-" + k); return v === null ? d : JSON.parse(v); } catch(e) { return d; } },
+  set(k, v){ try { localStorage.setItem("vb-" + k, JSON.stringify(v)); } catch(e) {} }
+};
+let favs = store.get("favs", []);
+const ach = store.get("ach", {});
+let spins = store.get("spins", 0);
+
+function toast(msg){ const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 1600); }
+function logoHtml(c, cls, st){ const src = LOGOS[c.logo || c.id]; return `<span class="lg ${cls||""}"${st ? ` style="${st}"` : ""}>${src ? `<img src="${src}" alt="${c.name}">` : `<span class="wm">${c.name}</span>`}</span>`; }
+const icon = (id, s) => `<svg class="ico"${s ? ` style="width:${s}px;height:${s}px"` : ""}><use href="#${id}"/></svg>`;
+
+/* --- achievements --- */
+const ACH = [
+  ["copy","i-copy","Скопировал промокод"],["fav","i-heart","Первое избранное"],["spin","i-wheel","Крутанул колесо"],
+  ["quiz","i-target","Прошёл подбор"],["calc","i-calc","Посчитал бонус"],["guide","i-book","Прошёл гайд"]
+];
+const LEVELS = ["Новичок","Игрок","Хайроллер","Легенда"];
+function unlock(k){ if (ach[k]) return; ach[k] = true; store.set("ach", ach); renderProfile(); toast("Достижение: " + ACH.find(a => a[0] === k)[2]); }
+function renderProfile(){
+  const n = Object.keys(ach).length;
+  $("achs").innerHTML = ACH.map(([k,i,t]) => `<div class="ach ${ach[k] ? "on" : ""}"><span class="badge-ico">${icon(i)}</span>${t}</div>`).join("");
+  $("st-ach").textContent = n; $("st-fav").textContent = favs.length; $("st-spins").textContent = spins;
+  const lvl = Math.min(LEVELS.length - 1, Math.floor(n / 2));
+  $("lvl-name").textContent = LEVELS[lvl]; $("lvl-xp").textContent = `${n} / ${ACH.length}`;
+  $("lvl-bar").style.width = (n / ACH.length * 100) + "%";
+  const items = CASINOS.filter(c => favs.includes(c.id));
+  $("favs").innerHTML = items.length ? items.map(casinoHtml).join("") : `<p class="muted">Пока пусто. Отмечай казино сердечком.</p>`;
+}
+
+/* --- offers carousel --- */
+const TOP = ["fenix","faro","panda","eva","apex"].map(id => CASINOS.find(c => c.id === id));
+$("offers").innerHTML = TOP.map(c => `<div class="offer"><div class="top-row">${logoHtml(c, "", "width:96px;height:44px")}<span class="tag gold">${c.fs} FS</span></div>
+  <span class="big">${c.bonus}</span><p class="muted" style="font-size:13px">${c.text}</p>
+  <a class="btn btn-gold" href="${c.url}" target="_blank" rel="noopener">Забрать бонус</a></div>`).join("");
+$("offer-dots").innerHTML = TOP.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("");
+$("offers").addEventListener("scroll", e => {
+  const el = e.target, i = Math.round(el.scrollLeft / (el.firstElementChild.offsetWidth + 10));
+  [...$("offer-dots").children].forEach((d, j) => d.classList.toggle("on", j === i));
+}, {passive:true});
+
+/* --- feed --- */
+const KIND = {live:["i-live","Стрим","Смотреть"], win:["i-star","Занос","Открыть пост"], wheel:["i-wheel","Розыгрыш","Участвовать"], post:["i-send","Пост","Открыть пост"]};
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function ago(ts){ const d = Math.floor(Date.now()/1000 - ts); if (d < 3600) return Math.max(1, Math.floor(d/60)) + " мин назад"; if (d < 86400) return Math.floor(d/3600) + " ч назад";
+  return new Date(ts*1000).toLocaleDateString("ru-RU", {day:"numeric", month:"short"}); }
+const postHtml = p => { const k = KIND[p.kind] || KIND.post;
+  return `<article class="post"><span class="badge-ico">${icon(k[0])}</span><div><span class="meta">${k[1]} · ${ago(p.date)}${p.media ? " · фото/видео" : ""}</span><p>${esc(p.text)}</p><a class="link" href="${esc(p.link)}" target="_blank" rel="noopener">${k[2]} ›</a></div></article>`; };
+function renderFeed(items){
+  const empty = `<p class="muted">Здесь появятся свежие посты из каналов Витуса.</p>`;
+  $("feed-preview").innerHTML = items.length ? items.slice(0, 2).map(postHtml).join("") : empty;
+  $("feed-full").innerHTML = items.length ? items.slice(0, 20).map(postHtml).join("") : empty;
+}
+renderFeed([]);
+fetch("api/feed").then(r => r.ok ? r.json() : {items:[]}).then(d => renderFeed(d.items || [])).catch(() => {});
+
+/* --- casino list --- */
+let filter = "all", openId = null;
+function casinoHtml(c){
+  const fav = favs.includes(c.id), open = openId === c.id;
+  const codes = (c.codes || []).map(([k, d]) => `<button class="code-chip" type="button" data-copy="${k}">${k}<span>${d}</span></button>`).join("");
+  const tags = (c.tags || []).map(t => `<span class="tag gold">${t}</span>`).join("");
+  return `<li class="casino ${open ? "open" : ""}">
+    <button class="c-head" type="button" data-open="${c.id}" aria-expanded="${open}">${logoHtml(c)}
+      <span><strong>${c.name}</strong><small>${c.bonus || "Промокод VITUSSRAZOR"}</small></span>${icon("i-chev", 20).replace('class="ico"', 'class="ico chev"')}</button>
+    ${open ? `<div class="c-body">${c.text ? `<p>${c.text}</p>` : ""}${tags ? `<div class="tags">${tags}</div>` : ""}
+      <div class="codes"><button class="code-chip" type="button" data-copy="VITUSSRAZOR">VITUSSRAZOR<span>при регистрации</span></button>${codes}</div>
+      <div class="c-acts"><a class="btn btn-gold" href="${c.url}" target="_blank" rel="noopener">Играть</a>
+      <button class="heart" type="button" aria-pressed="${fav}" aria-label="В избранное" data-fav="${c.id}">${icon("i-heart")}</button></div></div>` : ""}
+  </li>`;
+}
+const FILTERS = {
+  all: () => true, fav: c => favs.includes(c.id), bonus: c => (c.pct || 0) >= 250, fs: c => (c.fs || 0) >= 900,
+  codes: c => (c.codes || []).length > 0, noverif: c => c.noverif, proven: c => c.proven
+};
+function renderList(){
+  const q = $("q").value.trim().toLowerCase();
+  const items = CASINOS.filter(c => c.name.toLowerCase().includes(q) && FILTERS[filter](c));
+  const main = items.filter(c => c.group !== "proven"), proven = items.filter(c => c.group === "proven");
+  $("list").innerHTML = main.map(casinoHtml).join("") + (proven.length ? `<li class="label group-title">Проверенные временем</li>` + proven.map(casinoHtml).join("") : "");
+  $("empty").hidden = items.length > 0;
+  $("empty").textContent = filter === "fav" ? "Открой казино и нажми ♥, чтобы добавить в избранное." : "Ничего не нашлось.";
+}
+$("q").addEventListener("input", renderList);
+$("filters").addEventListener("click", e => {
+  const b = e.target.closest("[data-filter]"); if (!b) return;
+  filter = b.dataset.filter;
+  document.querySelectorAll("[data-filter]").forEach(x => x.setAttribute("aria-pressed", x === b));
+  renderList();
+});
+
+/* --- global clicks: open / fav / copy / go --- */
+document.addEventListener("click", e => {
+  const op = e.target.closest("[data-open]");
+  if (op) { openId = openId === op.dataset.open ? null : op.dataset.open; renderList(); renderProfile(); return; }
+  const h = e.target.closest("[data-fav]");
+  if (h) { const id = h.dataset.fav; favs = favs.includes(id) ? favs.filter(x => x !== id) : [...favs, id]; store.set("favs", favs);
+    if (favs.length) unlock("fav"); renderList(); renderProfile(); toast(favs.includes(id) ? "Добавлено в избранное" : "Убрано из избранного"); return; }
+  const cp = e.target.closest("[data-copy]");
+  if (cp) { const text = cp.dataset.copy;
+    const done = () => { toast("Скопировано: " + text); if (text === "VITUSSRAZOR") unlock("copy"); };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done).catch(done); else done(); return; }
+  const g = e.target.closest("[data-go]");
+  if (g) go(g.dataset.go, g.dataset.anchor);
+});
+
+/* --- navigation --- */
+const VIEWS = ["home","casino","tools","guide","profile","vitus"];
+function go(v, anchor){
+  if (!VIEWS.includes(v)) v = "home";
+  VIEWS.forEach(k => $("v-" + k).hidden = k !== v);
+  const tabV = v === "vitus" ? "home" : v;
+  document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.go === tabV));
+  requestAnimationFrame(() => { if (anchor && $(anchor)) $(anchor).scrollIntoView({behavior:"smooth", block:"start"}); else window.scrollTo({top:0}); });
+}
+
+/* --- wheel --- */
+const WHEEL = ["fenix","faro","panda","eva","apex","joy","vodka","beer"].map(id => CASINOS.find(c => c.id === id));
+(function drawWheel(){
+  const n = WHEEL.length, r = 150, cx = 150, cy = 150; let s = "";
+  WHEEL.forEach((c, i) => {
+    const a0 = (i / n) * 2 * Math.PI - Math.PI / 2, a1 = ((i + 1) / n) * 2 * Math.PI - Math.PI / 2;
+    const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0), x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    const fill = i % 2 ? "#17171B" : "#24242B";
+    s += `<path d="M${cx},${cy} L${x0},${y0} A${r},${r} 0 0,1 ${x1},${y1} Z" fill="${fill}" stroke="#D9B25F" stroke-opacity=".35" stroke-width="1"/>`;
+    const am = (a0 + a1) / 2, tx = cx + r * 0.68 * Math.cos(am), ty = cy + r * 0.68 * Math.sin(am), deg = am * 180 / Math.PI;
+    s += `<text x="${tx}" y="${ty}" fill="${i % 2 ? "#F7E3A3" : "#E9E7E3"}" font-family="Unbounded, Arial Black, sans-serif" font-weight="700" font-size="13" text-anchor="middle" dominant-baseline="middle" transform="rotate(${deg} ${tx} ${ty})">${c.name}</text>`;
+  });
+  $("wheel").innerHTML = `<svg viewBox="0 0 300 300">${s}</svg>`;
+})();
+let angle = 0, spinning = false;
+const today = new Date().toDateString();
+function spinsLeft(){ const d = store.get("spin-day", {day:"", n:0}); return d.day === today ? Math.max(0, 3 - d.n) : 3; }
+function updSpins(){ $("spins-left").textContent = `осталось сегодня: ${spinsLeft()}`; $("spin").disabled = spinning || spinsLeft() === 0; $("spin").textContent = spinsLeft() ? "Крутить" : "Приходи завтра"; }
+$("spin").addEventListener("click", () => {
+  if (spinning || !spinsLeft()) return;
+  spinning = true; updSpins(); $("spin-result").hidden = true;
+  const n = WHEEL.length, idx = Math.floor(Math.random() * n);
+  const target = 360 - (idx + 0.5) * (360 / n);
+  angle = angle - (angle % 360) + 360 * 6 + target;
+  $("wheel").style.transform = `rotate(${angle}deg)`;
+  const d = store.get("spin-day", {day:"", n:0}); store.set("spin-day", {day: today, n: (d.day === today ? d.n : 0) + 1});
+  spins++; store.set("spins", spins);
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  setTimeout(() => {
+    spinning = false; const c = WHEEL[idx];
+    $("spin-result").innerHTML = `<span class="label">Сегодня играй в</span><span class="big">${c.name}</span><p class="muted">${c.bonus}</p><a class="btn btn-gold" href="${c.url}" target="_blank" rel="noopener">Забрать бонус</a>`;
+    $("spin-result").hidden = false; unlock("spin"); updSpins(); renderProfile();
+  }, reduce ? 50 : 4300);
+});
+updSpins();
+
+/* --- quiz --- */
+const QUIZ = [
+  {q:"Что важнее всего?", o:[["Большой % к депозиту","i-diamond","bonus"],["Много фриспинов","i-star","fs"],["Без верификации","i-shield","noverif"],["Проверено временем","i-crown","proven"]]},
+  {q:"Какой депозит планируешь?", o:[["До 1 000 ₽","i-gift","s"],["1 000–5 000 ₽","i-cards","m"],["5 000–20 000 ₽","i-calc","l"],["Больше 20 000 ₽","i-crown","xl"]]},
+  {q:"Что ещё приятно?", o:[["Кешбэк","i-clock","cash"],["Бездеп","i-gift","nodep"],["Розыгрыши","i-wheel","raffle"],["Свои бонускоды","i-copy","codes"]]}
+];
+let qi = 0, answers = [];
+function renderQuiz(){
+  $("quiz-bar").style.width = (qi / QUIZ.length * 100) + "%";
+  if (qi < QUIZ.length) {
+    const s = QUIZ[qi];
+    $("quiz").innerHTML = `<p class="label">Вопрос ${qi + 1} из ${QUIZ.length}</p><h3 style="margin:6px 0 10px">${s.q}</h3><div class="opts">${s.o.map(([t,i,v]) => `<button class="opt" type="button" data-ans="${v}">${icon(i,18)}${t}</button>`).join("")}</div>`;
+    return;
+  }
+  const score = c => {
+    let p = 0; const [a, , b] = answers;
+    if (a === "bonus") p += (c.pct || 0) / 50; if (a === "fs") p += (c.fs || 0) / 200; if (a === "noverif" && c.noverif) p += 10; if (a === "proven" && c.proven) p += 10;
+    if (b === "cash" && /Кешбэк/.test((c.tags || []).join())) p += 6; if (b === "nodep" && /Бездеп/.test((c.tags || []).join())) p += 6;
+    if (b === "raffle" && /Розыгрыш/.test((c.tags || []).join())) p += 6; if (b === "codes" && (c.codes || []).length) p += 4;
+    return p;
+  };
+  const best = [...CASINOS].sort((x, y) => score(y) - score(x)).slice(0, 2);
+  $("quiz").innerHTML = `<p class="label">Тебе подойдёт</p><div class="sec" style="margin-top:8px">${best.map(c => `<div class="offer" style="width:auto"><div class="top-row">${logoHtml(c)}<span class="tag gold">${c.bonus || "Выбор Витуса"}</span></div><p class="muted" style="font-size:13px">${c.text || ""}</p><a class="btn btn-gold" href="${c.url}" target="_blank" rel="noopener">Играть в ${c.name}</a></div>`).join("")}</div>
+    <button class="btn btn-glass btn-wide" type="button" id="quiz-again" style="margin-top:10px">Пройти заново</button>`;
+  unlock("quiz");
+}
+$("quiz").addEventListener("click", e => {
+  const b = e.target.closest("[data-ans]");
+  if (b) { answers[qi] = b.dataset.ans; qi++; renderQuiz(); return; }
+  if (e.target.closest("#quiz-again")) { qi = 0; answers = []; renderQuiz(); }
+});
+renderQuiz();
+
+/* --- calculator --- */
+const rub = n => Math.round(n).toLocaleString("ru-RU") + " ₽";
+function calc(){
+  const d = +$("dep").value, p = +$("pct").value, w = +$("wag").value, bonus = d * p / 100;
+  $("dep-v").textContent = rub(d); $("pct-v").textContent = p + "%"; $("wag-v").textContent = "x" + w;
+  $("o-bonus").textContent = rub(bonus); $("o-total").textContent = rub(d + bonus);
+  $("o-wager").textContent = rub(bonus * w); $("o-spins").textContent = Math.ceil(bonus * w / 50).toLocaleString("ru-RU");
+}
+["dep","pct","wag"].forEach(id => $(id).addEventListener("input", () => { calc(); unlock("calc"); }));
+calc();
+
+/* --- guide checklists --- */
+const checks = store.get("checks", {});
+document.querySelectorAll("[data-list]").forEach(ul => {
+  const key = ul.dataset.list, boxes = [...ul.querySelectorAll("input")];
+  const upd = () => { const n = boxes.filter(b => b.checked).length; document.querySelector(`[data-prog="${key}"]`).textContent = `${n}/${boxes.length}`; if (n === boxes.length) unlock("guide"); };
+  boxes.forEach((b, i) => { b.checked = !!(checks[key] || [])[i]; b.addEventListener("change", () => { checks[key] = boxes.map(x => x.checked); store.set("checks", checks); upd(); }); });
+  upd();
+});
+
+/* --- Telegram --- */
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg && tg.initData) {
+  tg.ready(); tg.expand();
+  try { tg.setHeaderColor("#0B0B0D"); tg.setBackgroundColor("#0B0B0D"); } catch(e) {}
+  const u = tg.initDataUnsafe && tg.initDataUnsafe.user;
+  if (u) {
+    $("p-name").textContent = [u.first_name, u.last_name].filter(Boolean).join(" ");
+    $("p-user").textContent = u.username ? "@" + u.username : "Игрок Витуса";
+    $("p-ava").textContent = (u.first_name || "V")[0].toUpperCase();
+    if (u.photo_url) $("p-ava").innerHTML = `<img src="${esc(u.photo_url)}" alt="">`;
+  }
+  document.addEventListener("click", e => {
+    const a = e.target.closest("a[href^='http']"); if (!a) return;
+    e.preventDefault();
+    if (/^https:\/\/t\.me\//.test(a.href)) tg.openTelegramLink(a.href); else tg.openLink(a.href);
+  }, true);
+  fetch("api/me", {method: "POST", body: tg.initData}).then(r => r.ok ? r.json() : null).then(d => {
+    if (!d || !d.subs) return;
+    for (const [k, v] of Object.entries(d.subs)) {
+      const el = document.querySelector(`[data-sub="${k}"]`);
+      if (el && v === true) el.innerHTML = `<span class="ok">✓ Подписан</span>`;
+    }
+  }).catch(() => {});
+}
+
+renderList(); renderProfile();
+go(location.hash.replace("#", ""));
+</script>
+</body>
+</html>
