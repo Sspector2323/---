@@ -12,6 +12,16 @@ def _env(name: str, default: str | None = None, required: bool = False) -> str:
     return value or ""
 
 
+def _normalize_url(raw: str) -> str:
+    """WEBAPP_URL: убираем пробелы и «/» в конце, добавляем https://, если его забыли."""
+    url = raw.strip().strip('"').strip("'").rstrip("/")
+    if url and not url.startswith(("https://", "http://")):
+        url = "https://" + url
+    if url.startswith("http://"):
+        url = "https://" + url[len("http://"):]  # Telegram открывает мини-приложения только по https
+    return url
+
+
 def _parse_service_account(raw: str) -> dict | None:
     """GOOGLE_SERVICE_ACCOUNT_JSON: либо сам JSON, либо он же в base64."""
     raw = raw.strip()
@@ -63,6 +73,6 @@ def load_config() -> Config:
         broadcast_delay=float(_env("BROADCAST_DELAY", "0.05")),
         source_channel=_env("SOURCE_CHANNEL", "vtss2").strip().lstrip("@").lower(),
         repost_mode=_env("REPOST_MODE", "auto").strip().lower(),
-        webapp_url=_env("WEBAPP_URL").strip().rstrip("/"),
+        webapp_url=_normalize_url(_env("WEBAPP_URL")),
         port=int(_env("PORT", "8080")),
     )

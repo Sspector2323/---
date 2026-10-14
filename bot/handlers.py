@@ -11,6 +11,7 @@ import itertools
 import logging
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.enums import ChatAction
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -50,6 +51,7 @@ def setup_router(
     router = Router()
     router.message.filter(F.chat.type == "private")  # «Фильтр: только личка»
     important_kb = build_keyboard(important_keyboard(cfg.webapp_url))
+    fallback_kb = build_keyboard(IMPORTANT_KEYBOARD)  # старые кнопки, если Telegram не принял кнопки приложения
     state = {"busy": False, "task": None}
     drafts: dict[str, list[Message]] = {}  # черновик рассылки: токен -> сообщения поста
     albums: dict[str, list[Message]] = {}  # альбом админа собирается здесь, пока приходят его части
@@ -283,7 +285,13 @@ def setup_router(
             await send_html(bot, chat_id, answer)  # «Ии-ответ»
 
         await asyncio.sleep(cfg.followup_delay)  # «Wait3»
-        await send_html(bot, chat_id, IMPORTANT_TEXT, important_kb, no_preview=True)  # «Send a text message»
+        try:
+            await send_html(bot, chat_id, IMPORTANT_TEXT, important_kb, no_preview=True)  # «Send a text message»
+        except TelegramBadRequest as e:
+            if important_kb is fallback_kb:
+                raise
+            log.error("Telegram не принял кнопки мини-приложения (проверь WEBAPP_URL=%s): %s", cfg.webapp_url, e)
+            await send_html(bot, chat_id, IMPORTANT_TEXT, fallback_kb, no_preview=True)
 
     async def admin_draft(message: Message, bot: Bot) -> None:
         if message.text and message.text.startswith("/") and not message.text.startswith("/start"):
