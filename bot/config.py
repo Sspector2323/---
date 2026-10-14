@@ -39,6 +39,8 @@ class Config:
     broadcast_delay: float = 0.05
     source_channel: str = ""
     repost_mode: str = "auto"
+    webapp_url: str = ""
+    port: int = 8080
 
 
 def load_config() -> Config:
@@ -61,4 +63,6 @@ def load_config() -> Config:
         broadcast_delay=float(_env("BROADCAST_DELAY", "0.05")),
         source_channel=_env("SOURCE_CHANNEL", "vtss2").strip().lstrip("@").lower(),
         repost_mode=_env("REPOST_MODE", "auto").strip().lower(),
+        webapp_url=_env("WEBAPP_URL").strip().rstrip("/"),
+        port=int(_env("PORT", "8080")),
     )

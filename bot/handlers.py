@@ -44,10 +44,12 @@ ADMIN_HELP = (
 )
 
 
-def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Reposter, welcome: Welcome) -> Router:
+def setup_router(
+    cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Reposter, welcome: Welcome, feed=None
+) -> Router:
     router = Router()
     router.message.filter(F.chat.type == "private")  # «Фильтр: только личка»
-    important_kb = build_keyboard(IMPORTANT_KEYBOARD)
+    important_kb = build_keyboard(important_keyboard(cfg.webapp_url))
     state = {"busy": False, "task": None}
     drafts: dict[str, list[Message]] = {}  # черновик рассылки: токен -> сообщения поста
     albums: dict[str, list[Message]] = {}  # альбом админа собирается здесь, пока приходят его части
@@ -243,6 +245,8 @@ def setup_router(cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Re
 
     @router.channel_post()
     async def on_channel_post(message: Message, bot: Bot):
+        if feed is not None and (reposter.is_source(message) or message.chat.id == cfg.promo_channel_id):
+            await feed.add(message)  # лента мини-приложения
         await reposter.on_channel_post(message, bot)
 
     @router.callback_query(F.data.startswith("rp:"), F.from_user.id.func(is_admin))
@@ -319,3 +323,15 @@ def _confirm_kb(ok_data: str) -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+def important_keyboard(webapp_url: str) -> list:
+    """Кнопки под «ВАЖНО»: если мини-приложение подключено (WEBAPP_URL), ведут в его разделы."""
+    if not webapp_url:
+        return IMPORTANT_KEYBOARD
+    return [
+        [("🎰 Казино Витуса", "web_app", f"{webapp_url}/#casino")],
+        [("🎡 Колесо и фишки", "web_app", f"{webapp_url}/#tools")],
+        [("📖 Справочник игрока", "web_app", f"{webapp_url}/#guide")],
+        [("👤 Личный кабинет", "web_app", f"{webapp_url}/#profile")],
+    ]

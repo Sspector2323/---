@@ -4,13 +4,20 @@ import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-from aiogram.types import BotCommand, BotCommandScopeChat, BotCommandScopeDefault
+from aiogram.types import (
+    BotCommand,
+    BotCommandScopeChat,
+    BotCommandScopeDefault,
+    MenuButtonWebApp,
+    WebAppInfo,
+)
 
 from .ai import AIResponder
 from .config import load_config
 from .handlers import setup_router
 from .repost import Reposter
 from .sheets import PlayersSheet, SettingsStore
+from .webapp import Feed, create_app, start_server
 from .welcome import Welcome
 
 ADMIN_COMMANDS = [
@@ -39,10 +46,13 @@ async def main() -> None:
     bot = Bot(cfg.telegram_token, default=DefaultBotProperties(link_preview_is_disabled=False))
     dp = Dispatcher()
     reposter = Reposter(cfg.source_channel, cfg.promo_channel_id, cfg.repost_mode, cfg.admin_ids)
-    welcome = Welcome(SettingsStore(sheet))
+    settings = SettingsStore(sheet)
+    welcome = Welcome(settings)
     await welcome.load()
+    feed = Feed(settings)
+    await feed.load()
     log.info("Приветствие: %s", "своё (из таблицы)" if welcome.current else "стандартное")
-    dp.include_router(setup_router(cfg, sheet, ai, reposter, welcome))
+    dp.include_router(setup_router(cfg, sheet, ai, reposter, welcome, feed))
 
     # Снимаем вебхук n8n, иначе long polling не получит обновления
     await bot.delete_webhook(drop_pending_updates=False)
@@ -53,10 +63,25 @@ async def main() -> None:
             await bot.set_my_commands(ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=admin_id))
         except Exception as e:
             log.warning("Не удалось поставить меню админу %s (он ещё не писал боту?): %s", admin_id, e)
+    # Мини-приложение: сервер на PORT и кнопка «Приложение» у поля ввода (команды админа — через «/»)
+    channels = {"stream": f"@{cfg.source_channel}", "promo": cfg.promo_channel_id}
+    runner = await start_server(create_app(bot, cfg.telegram_token, feed, channels), cfg.port)
+    if cfg.webapp_url:
+        try:
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(text="Приложение", web_app=WebAppInfo(url=cfg.webapp_url + "/"))
+            )
+        except Exception as e:
+            log.warning("Не удалось поставить кнопку мини-приложения: %s", e)
+    else:
+        log.warning("WEBAPP_URL не задан — кнопки ведут на старые страницы Framer")
     me = await bot.get_me()
     log.info("Бот @%s запущен, админы: %s", me.username, sorted(cfg.admin_ids) or "не заданы")
     log.info("Автопересылка: @%s → %s, режим %s", cfg.source_channel, cfg.promo_channel_id, reposter.mode)
-    await dp.start_polling(bot, allowed_updates=["message", "callback_query", "channel_post"])
+    try:
+        await dp.start_polling(bot, allowed_updates=["message", "callback_query", "channel_post"])
+    finally:
+        await runner.cleanup()
 
 
 if __name__ == "__main__":
