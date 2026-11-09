@@ -12,6 +12,7 @@ REPOST_MODE:
 import asyncio
 import html
 import itertools
+import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -113,16 +114,44 @@ async def publish(bot: Bot, post: SourcePost, target: int, kind: str = "moment")
     await send_html(bot, target, text, build_keyboard(kb))
 
 
+async def publish_copy(bot: Bot, post: SourcePost, target: int) -> None:
+    """Пост «как есть»: текст, форматирование, медиа, альбом и кнопки — без пометки «переслано»."""
+    ids = [m.message_id for m in post.messages]
+    if len(ids) == 1:
+        await with_retry(lambda: bot.copy_message(target, post.chat_id, ids[0]))
+    else:
+        await with_retry(lambda: bot.copy_messages(target, post.chat_id, ids))
+
+
+_job_ids = itertools.count(1)  # общий счётчик: id заявок не пересекаются между пересылками
+
+STYLE_TITLES = {"vitus": "с нашей подписью", "copy": "как есть"}
+MODE_TITLES = {"auto": "сразу", "approve": "после проверки админом", "off": "выключена"}
+
+
 class Reposter:
-    def __init__(self, source: str, target: int, mode: str, admin_ids: set[int]):
-        self.source = source
-        self.target = target
+    """Одна пересылка: канал-источник → один или несколько каналов/групп.
+
+    style «vitus» — фраза автора + наша подпись (канал Витуса → ВИТУС);
+    style «copy»  — пост целиком, как в оригинале.
+    """
+
+    def __init__(self, source: str, targets, mode: str, admin_ids: set[int],
+                 style: str = "vitus", title: str = "Канал Витуса", key: str = "vitus"):
+        self.source = str(source).lstrip("@").lower()
+        self.targets: list[int] = [targets] if isinstance(targets, int) else [int(t) for t in targets]
         self.mode = mode if mode in {"auto", "approve", "off"} else "auto"
         self.admin_ids = admin_ids
+        self.style = style if style in STYLE_TITLES else "vitus"
+        self.title = title
+        self.key = key
         self._albums: dict[str, SourcePost] = {}
         self._pending: dict[int, SourcePost] = {}
-        self._ids = itertools.count(1)
         self._tasks: set[asyncio.Task] = set()
+
+    @property
+    def target(self) -> int:
+        return self.targets[0] if self.targets else 0
 
     def is_source(self, message: Message) -> bool:
         chat = message.chat
@@ -131,10 +160,10 @@ class Reposter:
         )
 
     async def on_channel_post(self, message: Message, bot: Bot) -> None:
-        if self.mode == "off" or not self.is_source(message) or message.chat.id == self.target:
+        if self.mode == "off" or not self.targets or not self.is_source(message) or message.chat.id in self.targets:
             return
-        if not (message.text or message.caption or message.photo or message.video
-                or message.animation or message.document or message.audio):
+        if not (message.text or message.caption or message.photo or message.video or message.animation
+                or message.document or message.audio or message.voice or message.video_note or message.poll):
             return  # служебные сообщения (закреп, смена названия и т.п.)
 
         if message.media_group_id:
@@ -159,14 +188,28 @@ class Reposter:
             post.messages.sort(key=lambda m: m.message_id)
             await self._handle(post, bot)
 
+    async def _publish(self, bot: Bot, post: SourcePost, target: int, kind: str = "moment") -> None:
+        if self.style == "copy":
+            await publish_copy(bot, post, target)
+        else:
+            await publish(bot, post, target, kind=kind)
+
+    async def _publish_all(self, bot: Bot, post: SourcePost, kind: str = "moment") -> list[str]:
+        errors = []
+        for target in self.targets:
+            try:
+                await self._publish(bot, post, target, kind)
+            except Exception as e:
+                log.exception("Пересылка «%s»: не удалось отправить в %s", self.title, target)
+                errors.append(f"{target}: {e}")
+        return errors
+
     async def _handle(self, post: SourcePost, bot: Bot) -> None:
         if self.mode == "auto":
-            try:
-                await publish(bot, post, self.target)
-                log.info("Переслан пост %s из %s", post.messages[0].message_id, self.source)
-            except Exception as e:
-                log.exception("Не удалось переслать пост")
-                await self._notify_admins(bot, f"⚠️ Не удалось переслать пост из канала в наш канал: {e}")
+            errors = await self._publish_all(bot, post)
+            log.info("Пересылка «%s»: пост %s → %s", self.title, post.messages[0].message_id, self.targets)
+            if errors:
+                await self._notify_admins(bot, f"⚠️ Пересылка «{self.title}»: не удалось отправить пост\n" + "\n".join(errors))
             return
         await self._ask_admins(post, bot)
 
@@ -178,21 +221,23 @@ class Reposter:
                 log.warning("Не удалось написать админу %s: %s", admin_id, e)
 
     async def _ask_admins(self, post: SourcePost, bot: Bot) -> None:
-        job_id = next(self._ids)
+        job_id = next(_job_ids)
         self._pending[job_id] = post
         while len(self._pending) > 100:
             self._pending.pop(next(iter(self._pending)))
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Опубликовать", callback_data=f"rp:{job_id}:moment")],
-            [InlineKeyboardButton(text="🔴 Опубликовать как анонс стрима", callback_data=f"rp:{job_id}:stream")],
-            [InlineKeyboardButton(text="❌ Пропустить", callback_data=f"rp:{job_id}:skip")],
-        ])
+        rows = [[InlineKeyboardButton(text="✅ Опубликовать", callback_data=f"rp:{job_id}:moment")]]
+        if self.style == "vitus":
+            rows.append([InlineKeyboardButton(text="🔴 Опубликовать как анонс стрима", callback_data=f"rp:{job_id}:stream")])
+        rows.append([InlineKeyboardButton(text="❌ Пропустить", callback_data=f"rp:{job_id}:skip")])
         for admin_id in self.admin_ids:
             try:
-                await publish(bot, post, admin_id)  # превью ровно в том виде, как уйдёт в канал
+                await self._publish(bot, post, admin_id)  # превью ровно в том виде, как уйдёт в каналы
             except Exception as e:
                 log.warning("Превью для %s не отправилось: %s", admin_id, e)
-        await self._notify_admins(bot, "👆 Новый пост в канале Витуса. Публикуем в наш канал?", kb)
+        await self._notify_admins(bot, f"👆 Новый пост: {self.title}. Публикуем?", InlineKeyboardMarkup(inline_keyboard=rows))
+
+    def has_job(self, job_id: int) -> bool:
+        return job_id in self._pending
 
     async def resolve(self, job_id: int, action: str, bot: Bot) -> str:
         post = self._pending.pop(job_id, None)
@@ -200,5 +245,66 @@ class Reposter:
             return "Этот пост уже обработан (или бот перезапускался)."
         if action == "skip":
             return "❌ Пропущено"
-        await publish(bot, post, self.target, kind=action)
-        return "✅ Опубликовано в канал" + (" как анонс стрима" if action == "stream" else "")
+        errors = await self._publish_all(bot, post, kind=action)
+        if errors:
+            return "⚠️ Не везде получилось:\n" + "\n".join(errors)
+        where = "в канал" if len(self.targets) == 1 else f"в {len(self.targets)} канала/группы"
+        return f"✅ Опубликовано {where}" + (" как анонс стрима" if action == "stream" else "")
+
+
+class RepostHub:
+    """Все пересылки бота. Куда пересылать и режим админ меняет в /reposts; хранится в «Настройки бота»."""
+
+    KEY = "routes"
+
+    def __init__(self, routes: list[Reposter], store=None):
+        self.routes = routes
+        self._store = store
+
+    def get(self, key: str) -> Reposter | None:
+        return next((r for r in self.routes if r.key == key), None)
+
+    # совместимость: лента мини-приложения и старый код спрашивают про канал Витуса
+    def is_source(self, message: Message) -> bool:
+        r = self.get("vitus")
+        return bool(r and r.is_source(message))
+
+    @property
+    def mode(self) -> str:
+        r = self.get("vitus")
+        return r.mode if r else "off"
+
+    def is_any_source(self, message: Message) -> bool:
+        return any(r.is_source(message) for r in self.routes)
+
+    async def on_channel_post(self, message: Message, bot: Bot) -> None:
+        for r in self.routes:
+            await r.on_channel_post(message, bot)
+
+    async def resolve(self, job_id: int, action: str, bot: Bot) -> str:
+        for r in self.routes:
+            if r.has_job(job_id):
+                return await r.resolve(job_id, action, bot)
+        return "Этот пост уже обработан (или бот перезапускался)."
+
+    async def load(self) -> None:
+        if not self._store:
+            return
+        try:
+            raw = await self._store.get(self.KEY)
+            saved = json.loads(raw) if raw else {}
+        except Exception:
+            log.exception("Не удалось загрузить настройки пересылок")
+            return
+        for r in self.routes:
+            data = saved.get(r.key) or {}
+            if "targets" in data:
+                r.targets = [int(t) for t in data["targets"]]
+            if data.get("mode") in MODE_TITLES:
+                r.mode = data["mode"]
+
+    async def save(self) -> None:
+        if not self._store:
+            return
+        data = {r.key: {"targets": r.targets, "mode": r.mode} for r in self.routes}
+        await self._store.set(self.KEY, json.dumps(data))

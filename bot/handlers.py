@@ -22,7 +22,8 @@ from .broadcast import copy_sender, run_broadcast, template_sender
 from .config import Config
 from .sender import build_keyboard, send_html, send_post
 from .mirrors import is_mirrors_post, message_text
-from .repost import Reposter
+from .chats import TYPE_TITLES, ChatRegistry
+from .repost import MODE_TITLES, STYLE_TITLES, Reposter
 from .sheets import PlayersSheet
 from .texts import BROADCASTS, IMPORTANT_KEYBOARD, IMPORTANT_TEXT
 from .welcome import Welcome, welcome_from_message
@@ -42,15 +43,18 @@ ADMIN_HELP = (
     "/welcome — показать текущее приветствие. Сменить: пришли пост и нажми «Сделать приветствием»\n"
     "/app — открыть мини-приложение\n"
     "/mirrors — обновить зеркала в приложении из закрепа\n"
+    "/reposts — пересылки между каналами: откуда, куда, режим\n"
     "/myid — твой Telegram ID\n"
     "/usermode — включить/выключить режим обычного пользователя (проверить ИИ-ответы)\n\n"
-    "Посты из канала Витуса бот сам пересылает в наш канал "
-    "(если он добавлен туда администратором)."
+    "Посты из канала Витуса и из Профит Хаты бот сам пересылает по настройкам /reposts. "
+    "Новый канал или группа появятся в списке, когда бот увидит там любое сообщение "
+    "(или напиши там /bind)."
 )
 
 
 def setup_router(
-    cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Reposter, welcome: Welcome, feed=None, mirrors=None
+    cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Reposter, welcome: Welcome, feed=None, mirrors=None,
+    chats: ChatRegistry | None = None,
 ) -> Router:
     router = Router()
     router.message.filter(F.chat.type == "private")  # «Фильтр: только личка»
@@ -264,6 +268,17 @@ def setup_router(
 
     @router.channel_post()
     async def on_channel_post(message: Message, bot: Bot):
+        if chats is not None:
+            is_new = await chats.note(message.chat)
+            if (message.text or "").strip().split("@")[0] == "/bind":
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                await notify_admins(bot, f"✅ Канал «{message.chat.title}» подключён. Его можно выбрать в /reposts.")
+                return
+            if is_new:
+                await notify_admins(bot, f"📡 Бот увидел новый канал: «{message.chat.title}». Его можно выбрать в /reposts.")
         if mirrors is not None and message.chat.id == mirrors.chat_id:
             # закреп «Актуальные зеркала»: новый пост или сообщение о закреплении
             await mirrors.consider(message.pinned_message or message, bot)
@@ -301,6 +316,108 @@ def setup_router(
         except Exception as e:
             result = f"Ошибка публикации: {e}"
         await call.message.edit_text(result)
+
+    # ---------- админка пересылок ----------
+
+    async def notify_admins(bot: Bot, text: str) -> None:
+        for admin_id in cfg.admin_ids:
+            try:
+                await bot.send_message(admin_id, text)
+            except Exception:
+                pass
+
+    def routes():
+        return getattr(reposter, "routes", [reposter])
+
+    def route_by_key(key: str):
+        return next((r for r in routes() if r.key == key), None)
+
+    def chat_title(chat_id: int) -> str:
+        return chats.title(chat_id) if chats is not None else str(chat_id)
+
+    def source_label(r) -> str:
+        return chats.label(r.source) if chats is not None else f"@{r.source}"
+
+    def routes_view():
+        lines = ["<b>Пересылки</b>\n"]
+        rows = []
+        for r in routes():
+            targets = ", ".join(chat_title(t) for t in r.targets) or "не выбрано"
+            lines.append(f"<b>{r.title}</b>\n{source_label(r)} → {targets}\n"
+                         f"Режим: {MODE_TITLES[r.mode]} · пост {STYLE_TITLES[r.style]}\n")
+            rows.append([InlineKeyboardButton(text=f"⚙️ {r.title}", callback_data=f"rt:{r.key}")])
+        lines.append("Новый канал или группа появятся в списке, когда бот увидит там любое сообщение. "
+                     "Можно просто написать там /bind.")
+        return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+    def route_view(r):
+        targets = "\n".join(f"• {chat_title(t)}" for t in r.targets) or "• пока не выбрано"
+        text = (f"<b>{r.title}</b>\n\nОткуда: {source_label(r)}\nКуда:\n{targets}\n\n"
+                f"Режим: <b>{MODE_TITLES[r.mode]}</b>\nПост: {STYLE_TITLES[r.style]}")
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📍 Куда пересылать", callback_data=f"rtt:{r.key}")],
+            [InlineKeyboardButton(text=f"🔁 Режим: {MODE_TITLES[r.mode]}", callback_data=f"rtm:{r.key}")],
+            [InlineKeyboardButton(text="‹ Все пересылки", callback_data="rts")],
+        ])
+        return text, kb
+
+    def targets_view(r):
+        known = {cid: info for cid, info in (chats.chats.items() if chats is not None else [])
+                 if not r.is_source(_FakeMsg(cid, info.get("username", "")))}
+        rows = [[InlineKeyboardButton(
+            text=("✅ " if cid in r.targets else "▫️ ") + f"{info['title']} · {TYPE_TITLES.get(info['type'], 'чат')}",
+            callback_data=f"rtx:{r.key}:{cid}")] for cid, info in known.items()]
+        rows.append([InlineKeyboardButton(text="✔️ Готово", callback_data=f"rt:{r.key}")])
+        text = (f"<b>{r.title}: куда пересылать</b>\n\nОтметь каналы и группы. "
+                "Если нужной группы нет в списке — напиши в ней /bind (бот должен быть там админом) "
+                "и открой этот экран заново.")
+        if not known:
+            text += "\n\n<i>Бот пока не видел ни одного канала или группы.</i>"
+        return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+    async def save_routes():
+        if hasattr(reposter, "save"):
+            try:
+                await reposter.save()
+            except Exception:
+                log.exception("Не удалось сохранить пересылки")
+
+    @router.message(Command("reposts"), F.from_user.id.func(is_admin))
+    async def reposts_menu(message: Message):
+        text, kb = routes_view()
+        await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+    @router.callback_query(F.data.startswith(("rts", "rt:", "rtt:", "rtm:", "rtx:")), F.from_user.id.func(is_admin))
+    async def reposts_callbacks(call: CallbackQuery):
+        parts = call.data.split(":")
+        kind = parts[0]
+        await call.answer()
+        if kind == "rts":
+            text, kb = routes_view()
+        else:
+            r = route_by_key(parts[1])
+            if r is None:
+                await call.message.edit_text("Пересылка не найдена.")
+                return
+            if kind == "rtm":
+                order = ["auto", "approve", "off"]
+                r.mode = order[(order.index(r.mode) + 1) % len(order)]
+                await save_routes()
+                text, kb = route_view(r)
+            elif kind == "rtx":
+                cid = int(parts[2])
+                r.targets = [t for t in r.targets if t != cid] if cid in r.targets else r.targets + [cid]
+                await save_routes()
+                text, kb = targets_view(r)
+            elif kind == "rtt":
+                text, kb = targets_view(r)
+            else:
+                text, kb = route_view(r)
+        try:
+            await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except TelegramBadRequest as e:
+            if "not modified" not in str(e):
+                raise
 
     # ---------- основной сценарий ----------
 
@@ -384,3 +501,50 @@ def important_keyboard(webapp_url: str) -> list:
         [("📖 Справочник игрока", "web_app", f"{webapp_url}/#guide")],
         [("👤 Личный кабинет", "web_app", f"{webapp_url}/#profile")],
     ]
+
+
+class _FakeMsg:
+    """Минимальный «пост» для проверки, является ли чат источником пересылки."""
+
+    def __init__(self, chat_id: int, username: str):
+        class _Chat:
+            pass
+        self.chat = _Chat()
+        self.chat.id = chat_id
+        self.chat.username = username
+
+
+def setup_chat_router(chats: ChatRegistry, admin_ids: set[int]) -> Router:
+    """Группы: запоминаем чат по любому сообщению и по /bind; бот добавлен/удалён — тоже."""
+    router = Router()
+
+    async def notify(bot: Bot, text: str) -> None:
+        for admin_id in admin_ids:
+            try:
+                await bot.send_message(admin_id, text)
+            except Exception:
+                pass
+
+    @router.message(F.chat.type.in_({"group", "supergroup"}))
+    async def group_message(message: Message, bot: Bot):
+        is_new = await chats.note(message.chat)
+        if (message.text or "").strip().split("@")[0] == "/bind":
+            await message.reply("✅ Группа подключена к боту. Админ может выбрать её в /reposts.")
+            await notify(bot, f"✅ Группа «{message.chat.title}» подключена. Её можно выбрать в /reposts.")
+        elif is_new:
+            await notify(bot, f"👥 Бот увидел новую группу: «{message.chat.title}». Её можно выбрать в /reposts.")
+
+    @router.my_chat_member()
+    async def bot_status(update, bot: Bot):
+        chat = update.chat
+        status = update.new_chat_member.status
+        if chat.type == "private":
+            return
+        if status in {"administrator", "member", "creator"}:
+            if await chats.note(chat, is_admin=status in {"administrator", "creator"}):
+                await notify(bot, f"➕ Бота добавили в «{chat.title}». Его можно выбрать в /reposts.")
+        elif status in {"left", "kicked"}:
+            await chats.forget(chat.id)
+            await notify(bot, f"➖ Бота убрали из «{chat.title}».")
+
+    return router
