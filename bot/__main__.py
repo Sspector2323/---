@@ -13,9 +13,10 @@ from aiogram.types import (
 
 from .ai import AIResponder
 from .config import load_config
-from .handlers import setup_router
+from .handlers import setup_chat_router, setup_router
 from .mirrors import Mirrors
-from .repost import Reposter
+from .chats import ChatRegistry
+from .repost import RepostHub, Reposter
 from .sheets import PlayersSheet, SettingsStore
 from .webapp import Feed, create_app, start_server
 from .welcome import Welcome
@@ -34,6 +35,7 @@ ADMIN_COMMANDS = [
     BotCommand(command="welcome", description="Текущее приветствие"),
     BotCommand(command="admin", description="Подсказка по командам"),
     BotCommand(command="mirrors", description="Обновить зеркала из закрепа"),
+    BotCommand(command="reposts", description="Пересылки между каналами"),
     BotCommand(command="myid", description="Мой Telegram ID"),
     BotCommand(command="usermode", description="Режим обычного пользователя вкл/выкл"),
 ]
@@ -53,8 +55,18 @@ async def main() -> None:
 
     bot = Bot(cfg.telegram_token, default=DefaultBotProperties(link_preview_is_disabled=False))
     dp = Dispatcher()
-    reposter = Reposter(cfg.source_channel, cfg.promo_channel_id, cfg.repost_mode, cfg.admin_ids)
     settings = SettingsStore(sheet)
+    # Пересылки: канал Витуса → ВИТУС (с нашей подписью), Профит Хата → группы (как есть).
+    # Куда пересылать и режим меняются в админке /reposts и хранятся в «Настройки бота».
+    reposter = RepostHub([
+        Reposter(cfg.source_channel, cfg.promo_channel_id, cfg.repost_mode, cfg.admin_ids,
+                 style="vitus", title="Канал Витуса", key="vitus"),
+        Reposter(cfg.profit_source, [], cfg.profit_mode, cfg.admin_ids,
+                 style="copy", title="Профит Хата", key="profit"),
+    ], settings)
+    await reposter.load()
+    chats = ChatRegistry(settings)
+    await chats.load()
     welcome = Welcome(settings)
     await welcome.load()
     feed = Feed(settings)
@@ -62,7 +74,8 @@ async def main() -> None:
     mirrors = Mirrors(settings, cfg.mirrors_channel_id, cfg.admin_ids)
     await mirrors.load()
     log.info("Приветствие: %s", "своё (из таблицы)" if welcome.current else "стандартное")
-    dp.include_router(setup_router(cfg, sheet, ai, reposter, welcome, feed, mirrors))
+    dp.include_router(setup_chat_router(chats, cfg.admin_ids))
+    dp.include_router(setup_router(cfg, sheet, ai, reposter, welcome, feed, mirrors, chats))
 
     # Снимаем вебхук n8n, иначе long polling не получит обновления
     await bot.delete_webhook(drop_pending_updates=False)
@@ -83,13 +96,21 @@ async def main() -> None:
     runner = await start_server(create_app(bot, cfg.telegram_token, feed, channels, mirrors), cfg.port)
     if not cfg.webapp_url:
         log.warning("WEBAPP_URL не задан — кнопки ведут на старые страницы Framer")
+    # Названия каналов из пересылок — сразу в список чатов, чтобы в /reposts не было голых номеров
+    for r in reposter.routes:
+        for ref in [f"@{r.source}" if not r.source.lstrip("-").isdigit() else int(r.source), *r.targets]:
+            try:
+                await chats.note(await bot.get_chat(ref))
+            except Exception as e:
+                log.warning("Не удалось получить чат %s: %s (бот там админ?)", ref, e)
     me = await bot.get_me()
     log.info("Бот @%s запущен, админы: %s", me.username, sorted(cfg.admin_ids) or "не заданы")
-    log.info("Автопересылка: @%s → %s, режим %s", cfg.source_channel, cfg.promo_channel_id, reposter.mode)
+    for r in reposter.routes:
+        log.info("Пересылка «%s»: @%s → %s, режим %s", r.title, r.source, r.targets or "не выбрано", r.mode)
     try:
         mirrors_task = asyncio.create_task(mirrors.loop(bot))  # закреп с зеркалами — при запуске и раз в 30 минут
         await dp.start_polling(
-            bot, allowed_updates=["message", "callback_query", "channel_post", "edited_channel_post"]
+            bot, allowed_updates=["message", "callback_query", "channel_post", "edited_channel_post", "my_chat_member"]
         )
     finally:
         mirrors_task.cancel()

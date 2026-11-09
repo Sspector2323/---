@@ -51,6 +51,8 @@ class Config:
     repost_mode: str = "auto"
     webapp_url: str = ""
     mirrors_channel_id: int = 0
+    profit_source: str = ""
+    profit_mode: str = "auto"
     port: int = 8080
 
 
@@ -76,5 +78,7 @@ def load_config() -> Config:
         repost_mode=_env("REPOST_MODE", "auto").strip().lower(),
         webapp_url=_normalize_url(_env("WEBAPP_URL")),
         mirrors_channel_id=int(_env("MIRRORS_CHANNEL_ID") or _env("PROMO_CHANNEL_ID", "-1001407379425")),
+        profit_source=_env("PROFIT_SOURCE", "profithata777").strip().lstrip("@").lower(),
+        profit_mode=_env("PROFIT_REPOST_MODE", "auto").strip().lower(),
         port=int(_env("PORT", "8080")),
     )
