@@ -275,7 +275,8 @@ def setup_router(
                     await message.delete()
                 except Exception:
                     pass
-                await notify_admins(bot, f"✅ Канал «{message.chat.title}» подключён. Его можно выбрать в /reposts.")
+                await notify_admins(bot, f"✅ Канал «{message.chat.title}» подключён.\nДобавить его в пересылку?",
+                                    bind_keyboard(reposter, message.chat.id, message.chat.username or ""))
                 return
             if is_new:
                 await notify_admins(bot, f"📡 Бот увидел новый канал: «{message.chat.title}». Его можно выбрать в /reposts.")
@@ -319,10 +320,10 @@ def setup_router(
 
     # ---------- админка пересылок ----------
 
-    async def notify_admins(bot: Bot, text: str) -> None:
+    async def notify_admins(bot: Bot, text: str, kb=None) -> None:
         for admin_id in cfg.admin_ids:
             try:
-                await bot.send_message(admin_id, text)
+                await bot.send_message(admin_id, text, reply_markup=kb)
             except Exception:
                 pass
 
@@ -386,6 +387,23 @@ def setup_router(
     async def reposts_menu(message: Message):
         text, kb = routes_view()
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+    @router.callback_query(F.data.startswith("rta:"), F.from_user.id.func(is_admin))
+    async def reposts_add_target(call: CallbackQuery):
+        _, key, cid = call.data.split(":", 2)
+        r, cid = route_by_key(key), int(cid)
+        await call.answer()
+        if r is None:
+            await call.message.edit_text("Пересылка не найдена.")
+            return
+        if cid not in r.targets:
+            r.targets = r.targets + [cid]
+            await save_routes()
+        targets = ", ".join(chat_title(t) for t in r.targets)
+        await call.message.edit_text(
+            f"✅ Готово: «{chat_title(cid)}» добавлена в пересылку «{r.title}».\n\n"
+            f"Сейчас: {source_label(r)} → {targets}"
+        )
 
     @router.callback_query(F.data.startswith(("rts", "rt:", "rtt:", "rtm:", "rtx:")), F.from_user.id.func(is_admin))
     async def reposts_callbacks(call: CallbackQuery):
@@ -457,7 +475,8 @@ def setup_router(
             # переслали пост из канала — запоминаем канал, чтобы его можно было выбрать в /reposts
             if await chats.note(origin.chat):
                 await message.answer(
-                    f"📡 Канал «{origin.chat.title}» добавлен в список. Выбрать его: /reposts → «Куда пересылать»."
+                    f"📡 Канал «{origin.chat.title}» добавлен в список. Добавить его в пересылку?",
+                    reply_markup=bind_keyboard(reposter, origin.chat.id, origin.chat.username or ""),
                 )
         if message.text and message.text.startswith("/") and not message.text.startswith("/start"):
             await message.answer("Не знаю такой команды.\n\n" + ADMIN_HELP, parse_mode="HTML")
@@ -510,6 +529,14 @@ def important_keyboard(webapp_url: str) -> list:
     ]
 
 
+def bind_keyboard(reposter, chat_id: int, username: str = "") -> InlineKeyboardMarkup | None:
+    """Кнопки «➕ Добавить в пересылку …» для только что подключённого чата."""
+    routes = getattr(reposter, "routes", [reposter] if reposter is not None else [])
+    rows = [[InlineKeyboardButton(text=f"➕ Пересылать сюда из «{r.title}»", callback_data=f"rta:{r.key}:{chat_id}")]
+            for r in routes if not r.is_source(_FakeMsg(chat_id, username)) and chat_id not in r.targets]
+    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+
 class _FakeMsg:
     """Минимальный «пост» для проверки, является ли чат источником пересылки."""
 
@@ -521,14 +548,14 @@ class _FakeMsg:
         self.chat.username = username
 
 
-def setup_chat_router(chats: ChatRegistry, admin_ids: set[int]) -> Router:
+def setup_chat_router(chats: ChatRegistry, admin_ids: set[int], reposter=None) -> Router:
     """Группы: запоминаем чат по любому сообщению и по /bind; бот добавлен/удалён — тоже."""
     router = Router()
 
-    async def notify(bot: Bot, text: str) -> None:
+    async def notify(bot: Bot, text: str, kb=None) -> None:
         for admin_id in admin_ids:
             try:
-                await bot.send_message(admin_id, text)
+                await bot.send_message(admin_id, text, reply_markup=kb)
             except Exception:
                 pass
 
@@ -536,8 +563,9 @@ def setup_chat_router(chats: ChatRegistry, admin_ids: set[int]) -> Router:
     async def group_message(message: Message, bot: Bot):
         is_new = await chats.note(message.chat)
         if (message.text or "").strip().split("@")[0] == "/bind":
-            await message.reply("✅ Группа подключена к боту. Админ может выбрать её в /reposts.")
-            await notify(bot, f"✅ Группа «{message.chat.title}» подключена. Её можно выбрать в /reposts.")
+            await message.reply(f"✅ Группа «{message.chat.title}» подключена к боту.")
+            await notify(bot, f"✅ В группе «{message.chat.title}» написали /bind.\nДобавить её в пересылку?",
+                         bind_keyboard(reposter, message.chat.id, message.chat.username or ""))
         elif is_new:
             await notify(bot, f"👥 Бот увидел новую группу: «{message.chat.title}». Её можно выбрать в /reposts.")
 

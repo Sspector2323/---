@@ -74,7 +74,7 @@ async def main() -> None:
     mirrors = Mirrors(settings, cfg.mirrors_channel_id, cfg.admin_ids)
     await mirrors.load()
     log.info("Приветствие: %s", "своё (из таблицы)" if welcome.current else "стандартное")
-    dp.include_router(setup_chat_router(chats, cfg.admin_ids))
+    dp.include_router(setup_chat_router(chats, cfg.admin_ids, reposter))
     dp.include_router(setup_router(cfg, sheet, ai, reposter, welcome, feed, mirrors, chats))
 
     # Снимаем вебхук n8n, иначе long polling не получит обновления
