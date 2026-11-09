@@ -109,7 +109,7 @@ class Feed:
             log.exception("Не удалось сохранить ленту")
 
 
-def create_app(bot: Bot, bot_token: str, feed: Feed, channels: dict[str, int | str]) -> web.Application:
+def create_app(bot: Bot, bot_token: str, feed: Feed, channels: dict[str, int | str], mirrors=None) -> web.Application:
     app = web.Application()
 
     async def index(_request):
@@ -135,7 +135,13 @@ def create_app(bot: Bot, bot_token: str, feed: Feed, channels: dict[str, int | s
         return web.json_response({"user": {"id": user["id"], "first_name": user.get("first_name", "")}, "subs": subs})
 
     app.router.add_get("/", index)
+    async def api_mirrors(_request):
+        if mirrors is None:
+            return web.json_response({"items": [], "updated": 0})
+        return web.json_response({"items": mirrors.items, "updated": mirrors.updated})
+
     app.router.add_get("/api/feed", api_feed)
+    app.router.add_get("/api/mirrors", api_mirrors)
     app.router.add_post("/api/me", api_me)
     return app
 

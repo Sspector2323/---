@@ -9,6 +9,7 @@ Telegram Trigger → «только личка» → запись в «База 
 import asyncio
 import itertools
 import logging
+import time
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -20,6 +21,7 @@ from .ai import AIResponder
 from .broadcast import copy_sender, run_broadcast, template_sender
 from .config import Config
 from .sender import build_keyboard, send_html, send_post
+from .mirrors import is_mirrors_post, message_text
 from .repost import Reposter
 from .sheets import PlayersSheet
 from .texts import BROADCASTS, IMPORTANT_KEYBOARD, IMPORTANT_TEXT
@@ -39,6 +41,7 @@ ADMIN_HELP = (
     "/stats — сколько людей в базе\n"
     "/welcome — показать текущее приветствие. Сменить: пришли пост и нажми «Сделать приветствием»\n"
     "/app — открыть мини-приложение\n"
+    "/mirrors — обновить зеркала в приложении из закрепа\n"
     "/myid — твой Telegram ID\n"
     "/usermode — включить/выключить режим обычного пользователя (проверить ИИ-ответы)\n\n"
     "Посты из канала Витуса бот сам пересылает в наш канал "
@@ -47,7 +50,7 @@ ADMIN_HELP = (
 
 
 def setup_router(
-    cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Reposter, welcome: Welcome, feed=None
+    cfg: Config, sheet: PlayersSheet, ai: AIResponder, reposter: Reposter, welcome: Welcome, feed=None, mirrors=None
 ) -> Router:
     router = Router()
     router.message.filter(F.chat.type == "private")  # «Фильтр: только личка»
@@ -261,9 +264,33 @@ def setup_router(
 
     @router.channel_post()
     async def on_channel_post(message: Message, bot: Bot):
+        if mirrors is not None and message.chat.id == mirrors.chat_id:
+            # закреп «Актуальные зеркала»: новый пост или сообщение о закреплении
+            await mirrors.consider(message.pinned_message or message, bot)
+            if message.pinned_message or is_mirrors_post(message_text(message)):
+                return  # сам пост с зеркалами в ленту не кладём
+        if message.pinned_message:
+            return
         if feed is not None and (reposter.is_source(message) or message.chat.id == cfg.promo_channel_id):
             await feed.add(message)  # лента мини-приложения
         await reposter.on_channel_post(message, bot)
+
+    @router.edited_channel_post()
+    async def on_channel_post_edit(message: Message, bot: Bot):
+        if mirrors is not None and message.chat.id == mirrors.chat_id:
+            await mirrors.consider(message, bot)  # отредактировали пост с зеркалами
+
+    @router.message(Command("mirrors"), F.from_user.id.func(is_admin))
+    async def mirrors_status(message: Message, bot: Bot):
+        if mirrors is None:
+            await message.answer("Автообновление зеркал выключено.")
+            return
+        result = await mirrors.refresh_from_pinned(bot)
+        when = time.strftime("%d.%m %H:%M", time.localtime(mirrors.updated)) if mirrors.updated else "ещё не было"
+        await message.answer(
+            f"🔄 Проверил закреп в канале с зеркалами: {result}.\n"
+            f"Казино в приложении: {len(mirrors.items)}. Последнее обновление: {when}."
+        )
 
     @router.callback_query(F.data.startswith("rp:"), F.from_user.id.func(is_admin))
     async def repost_decision(call: CallbackQuery, bot: Bot):

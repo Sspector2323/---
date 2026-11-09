@@ -50,6 +50,7 @@ class Config:
     source_channel: str = ""
     repost_mode: str = "auto"
     webapp_url: str = ""
+    mirrors_channel_id: int = 0
     port: int = 8080
 
 
@@ -74,5 +75,6 @@ def load_config() -> Config:
         source_channel=_env("SOURCE_CHANNEL", "vtss2").strip().lstrip("@").lower(),
         repost_mode=_env("REPOST_MODE", "auto").strip().lower(),
         webapp_url=_normalize_url(_env("WEBAPP_URL")),
+        mirrors_channel_id=int(_env("MIRRORS_CHANNEL_ID") or _env("PROMO_CHANNEL_ID", "-1001407379425")),
         port=int(_env("PORT", "8080")),
     )

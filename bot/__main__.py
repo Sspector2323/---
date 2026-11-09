@@ -14,6 +14,7 @@ from aiogram.types import (
 from .ai import AIResponder
 from .config import load_config
 from .handlers import setup_router
+from .mirrors import Mirrors
 from .repost import Reposter
 from .sheets import PlayersSheet, SettingsStore
 from .webapp import Feed, create_app, start_server
@@ -32,6 +33,7 @@ ADMIN_COMMANDS = [
     BotCommand(command="stats", description="Сколько людей в базе"),
     BotCommand(command="welcome", description="Текущее приветствие"),
     BotCommand(command="admin", description="Подсказка по командам"),
+    BotCommand(command="mirrors", description="Обновить зеркала из закрепа"),
     BotCommand(command="myid", description="Мой Telegram ID"),
     BotCommand(command="usermode", description="Режим обычного пользователя вкл/выкл"),
 ]
@@ -57,8 +59,10 @@ async def main() -> None:
     await welcome.load()
     feed = Feed(settings)
     await feed.load()
+    mirrors = Mirrors(settings, cfg.mirrors_channel_id, cfg.admin_ids)
+    await mirrors.load()
     log.info("Приветствие: %s", "своё (из таблицы)" if welcome.current else "стандартное")
-    dp.include_router(setup_router(cfg, sheet, ai, reposter, welcome, feed))
+    dp.include_router(setup_router(cfg, sheet, ai, reposter, welcome, feed, mirrors))
 
     # Снимаем вебхук n8n, иначе long polling не получит обновления
     await bot.delete_webhook(drop_pending_updates=False)
@@ -76,15 +80,19 @@ async def main() -> None:
     except Exception as e:
         log.warning("Не удалось вернуть кнопку меню команд: %s", e)
     channels = {"stream": f"@{cfg.source_channel}", "promo": cfg.promo_channel_id}
-    runner = await start_server(create_app(bot, cfg.telegram_token, feed, channels), cfg.port)
+    runner = await start_server(create_app(bot, cfg.telegram_token, feed, channels, mirrors), cfg.port)
     if not cfg.webapp_url:
         log.warning("WEBAPP_URL не задан — кнопки ведут на старые страницы Framer")
     me = await bot.get_me()
     log.info("Бот @%s запущен, админы: %s", me.username, sorted(cfg.admin_ids) or "не заданы")
     log.info("Автопересылка: @%s → %s, режим %s", cfg.source_channel, cfg.promo_channel_id, reposter.mode)
     try:
-        await dp.start_polling(bot, allowed_updates=["message", "callback_query", "channel_post"])
+        mirrors_task = asyncio.create_task(mirrors.loop(bot))  # закреп с зеркалами — при запуске и раз в 30 минут
+        await dp.start_polling(
+            bot, allowed_updates=["message", "callback_query", "channel_post", "edited_channel_post"]
+        )
     finally:
+        mirrors_task.cancel()
         await runner.cleanup()
 
 
