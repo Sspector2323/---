@@ -452,6 +452,13 @@ def setup_router(
             await send_html(bot, chat_id, IMPORTANT_TEXT, fallback_kb, no_preview=True)
 
     async def admin_draft(message: Message, bot: Bot) -> None:
+        origin = message.forward_origin
+        if chats is not None and origin is not None and getattr(origin, "chat", None) is not None:
+            # переслали пост из канала — запоминаем канал, чтобы его можно было выбрать в /reposts
+            if await chats.note(origin.chat):
+                await message.answer(
+                    f"📡 Канал «{origin.chat.title}» добавлен в список. Выбрать его: /reposts → «Куда пересылать»."
+                )
         if message.text and message.text.startswith("/") and not message.text.startswith("/start"):
             await message.answer("Не знаю такой команды.\n\n" + ADMIN_HELP, parse_mode="HTML")
             return
