@@ -121,7 +121,9 @@
 Бот получает доступ **только к файлам, которые создал сам** (`drive.file`), остальной Диск ему не виден.
 
 1. https://console.cloud.google.com → тот же проект, что и для таблицы → **APIs & Services → Library → Google Drive API → Enable**.
-2. **Google Auth Platform → Branding / OAuth consent screen**: тип **External**, название (например «Бот Витус»), свой email.
+2. **Google Auth Platform → Branding**: название (например «Бот Витус»), support email,
+   **App home page** = `WEBAPP_URL`, **Privacy policy** = `WEBAPP_URL/privacy` (страницу отдаёт сам бот), Save. Тип — **External**.
+   Проект Google Cloud может быть на любом аккаунте: Диск выбирается при входе через `/gdrive`.
    Затем **Audience → Publish app** (статус «In production») — иначе вход «слетает» через 7 дней. Проверка Google для `drive.file` не нужна.
 3. **Clients → Create client → Web application** → **Authorized redirect URIs**: `https://<адрес из WEBAPP_URL>/oauth/google`.
 4. Client ID и Client secret → Railway Variables: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`.

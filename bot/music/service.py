@@ -533,3 +533,25 @@ def oauth_handler(music: MusicService, bot: Bot):
         return page("Готово ✅", "Google Диск подключён. Можно закрыть страницу и вернуться в Telegram.")
 
     return handle
+
+
+PRIVACY_HTML = """<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>
+<title>Политика конфиденциальности</title>
+<body style='font-family:system-ui;max-width:720px;margin:40px auto;padding:0 16px;line-height:1.6;background:#0b0b0c;color:#eee'>
+<h1>Политика конфиденциальности</h1>
+<p>Этот Telegram-бот сохраняет музыкальные видео, ссылки на которые участники присылают в рабочую группу,
+в Google Диск владельца бота.</p>
+<h3>Какие данные Google используются</h3>
+<p>Бот запрашивает только доступ <b>drive.file</b>: он видит и изменяет исключительно файлы и папки,
+которые создал сам. Остальное содержимое Диска боту недоступно. Также бот получает адрес почты аккаунта,
+чтобы показать администратору, какой Диск подключён.</p>
+<h3>Хранение и передача</h3>
+<p>Токен доступа хранится в закрытых настройках бота и используется только для загрузки файлов.
+Данные не продаются и не передаются третьим лицам.</p>
+<h3>Отзыв доступа</h3>
+<p>Доступ можно отозвать в любой момент: <a style='color:#d4b26a' href='https://myaccount.google.com/permissions'>myaccount.google.com/permissions</a>.</p>
+</body>"""
+
+
+async def privacy_handler(_request):
+    return web.Response(text=PRIVACY_HTML, content_type="text/html")

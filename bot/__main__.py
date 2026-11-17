@@ -15,7 +15,7 @@ from .ai import AIResponder
 from .config import load_config
 from .handlers import setup_chat_router, setup_router
 from .mirrors import Mirrors
-from .music.service import MusicService, oauth_handler, setup_music_router
+from .music.service import MusicService, oauth_handler, privacy_handler, setup_music_router
 from .chats import ChatRegistry
 from .repost import RepostHub, Reposter
 from .sheets import PlayersSheet, SettingsStore
@@ -101,6 +101,7 @@ async def main() -> None:
     channels = {"stream": f"@{cfg.source_channel}", "promo": cfg.promo_channel_id}
     app = create_app(bot, cfg.telegram_token, feed, channels, mirrors)
     app.router.add_get("/oauth/google", oauth_handler(music, bot))
+    app.router.add_get("/privacy", privacy_handler)  # для экрана согласия Google (Branding)
     runner = await start_server(app, cfg.port)
     if not cfg.webapp_url:
         log.warning("WEBAPP_URL не задан — кнопки ведут на старые страницы Framer")
