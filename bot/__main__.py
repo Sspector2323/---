@@ -6,6 +6,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import (
     BotCommand,
+    BotCommandScopeAllGroupChats,
     BotCommandScopeChat,
     BotCommandScopeDefault,
     MenuButtonCommands,
@@ -87,6 +88,11 @@ async def main() -> None:
     await bot.delete_webhook(drop_pending_updates=False)
     # Меню команд (кнопка «Меню» у поля ввода): пользователям — /start и /app, админам — полный список
     await bot.set_my_commands(USER_COMMANDS, scope=BotCommandScopeDefault())
+    try:  # в группах (музыкальная группа Виктора) — только список «что не выложено»
+        await bot.set_my_commands([BotCommand(command="todo", description="Что ещё не выложено в ВК")],
+                                  scope=BotCommandScopeAllGroupChats())
+    except Exception as e:
+        log.warning("Не удалось поставить меню для групп: %s", e)
     for admin_id in cfg.admin_ids:
         try:
             await bot.set_my_commands(ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=admin_id))

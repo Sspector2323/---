@@ -149,7 +149,8 @@ class Track:
 
 def expand(url: str) -> list[dict]:
     """Ссылка → список видео (плейлист раскрываем). Каждое: {id, url, title}."""
-    opts = base_opts() | {"extract_flat": "in_playlist", "playlistend": PLAYLIST_LIMIT}
+    # watch?v=…&list=… — только сам трек; целый плейлист — только по ссылке playlist?list=…
+    opts = base_opts() | {"extract_flat": "in_playlist", "playlistend": PLAYLIST_LIMIT, "noplaylist": True}
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     entries = info.get("entries") if info.get("_type") == "playlist" else [info]
