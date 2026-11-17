@@ -11,7 +11,8 @@
 Команды в группе (админы бота или группы):
   /musichere — включить бота в этой группе;   /musicoff — выключить;
   /publisher — ответом на сообщение Александра (или /publisher @username) — кого тегать для ВК;
-  /todo — треки, которые ещё не выложены в ВК (со ссылками на карточки).
+  /todo — треки, которые ещё не выложены в ВК (со ссылками на карточки);
+  /redraw — ответом на карточку перерисовать её в текущем дизайне (без ответа — все карточки группы).
 В личке админу: /gdrive — подключить Google Диск, /music — состояние.
 """
 import asyncio
@@ -618,6 +619,83 @@ class MusicService:
         img = await self.image(rec, stage) if photo else None
         await self.show(bot, chat_id, message_id, photo, self.caption(rec, stage), self.keyboard(rec), img)
 
+    def _migrate(self, rec: dict) -> None:
+        """Запись карточки старого формата → новый (название, исполнитель, теги, бейджи, путь трека)."""
+        if rec.get("v2"):
+            return
+        if not rec.get("ar"):
+            rec["t"], rec["ar"], rec["tags"] = youtube.parse_title(rec.get("t", ""))
+        if not rec.get("b") and rec.get("i"):  # «⏱ 34:25 · 🎬 1080p · 643 МБ · 🎧 AAC 129 kbps»
+            parts = [re.sub(r"^\W+", "", x).strip() for x in rec["i"].split("·")]
+            rec["b"] = [x for x in parts if x]
+            info = []
+            size = next((x for x in parts if "МБ" in x or "КБ" in x), "")
+            if rec.get("v"):
+                info.append(f"🎬 <b>Видео со звуком</b> · 1080p{' · ' + size if size else ''} — можно смотреть и слушать")
+            if rec.get("a"):
+                aud = next((x for x in parts if "kbps" in x or "AAC" in x or "Opus" in x), "")
+                info.append(f"🎧 <b>Только звук</b>{' · ' + aud if aud else ''} — оригинал без пережатия")
+            dur = next((x for x in parts if re.fullmatch(r"\d+:\d{2}(:\d{2})?", x)), "")
+            if dur:
+                info.append(f"⏱ {dur}")
+            rec["info"] = info
+        if not rec.get("log"):
+            t = datetime.fromtimestamp(rec.get("c", time.time()), MSK).strftime("%H:%M")
+            rec["log"] = [[t, "прислал " + (_mention(rec.get("s")) or "кто-то")],
+                          [t, "скачано с YouTube"], [t, "на Google Диске"]]
+            if rec.get("vk") in {"work", "done"}:
+                rec["log"].append([rec.get("at", t).split(" ")[-1],
+                                   ("взял в работу" if rec["vk"] == "work" else "выложено в ВК") +
+                                   f" · {html.escape(rec.get('by', '').split(' ')[0])}"])
+
+    def rec_from_message(self, msg: Message) -> dict | None:
+        """Восстановить карточку по самому сообщению: ссылки берутся из кнопок, название — из подписи."""
+        kb = msg.reply_markup
+        if not kb:
+            return None
+        rec: dict = {"t": "", "u": "", "vid": "", "f": "", "v": "", "a": "", "an": "", "p": bool(msg.photo),
+                     "r": msg.reply_to_message.message_id if msg.reply_to_message else 0,
+                     "c": int(msg.date.timestamp()) if msg.date else int(time.time()), "by": "", "at": ""}
+        datas = set()
+        for row in kb.inline_keyboard:
+            for b in row:
+                url = b.url or ""
+                if b.callback_data:
+                    datas.add(b.callback_data)
+                if m := re.search(r"/folders/([\w-]+)", url):
+                    rec["f"] = m.group(1)
+                elif (m := re.search(r"/file/d/([\w-]+)", url)) and "Видео" in b.text:
+                    rec["v"] = m.group(1)
+                elif m and ("Звук" in b.text or "звук" in b.text):
+                    rec["a"] = m.group(1)
+                elif "youtu" in url:
+                    rec["u"] = url
+                    if m := VID_RE.search(url):
+                        rec["vid"] = m.group(1)
+        if not rec["f"]:
+            return None
+        rec["vk"] = "wait" if "mt" in datas else ("work" if "mv" in datas else "done")
+        text = msg.caption or msg.text or ""
+        first = text.split("\n", 1)[0].lstrip("🎵 ").strip()
+        rec["t"] = first
+        if m := re.search(r"Прислал:\s*@?(\S+)", text):
+            rec["s"] = {"id": 0, "name": m.group(1), "username": m.group(1)}
+        elif msg.reply_to_message and msg.reply_to_message.from_user:
+            u = msg.reply_to_message.from_user
+            rec["s"] = {"id": u.id, "name": u.full_name, "username": u.username or ""}
+        if m := re.search(r"(⏱[^\n]+)", text):
+            rec["i"] = m.group(1)
+        if m := re.search(r"(?:выложил|ВК выложил)\s+(.+?)\s+·\s+(\d\d\.\d\d \d\d:\d\d)", text):
+            rec["by"], rec["at"] = m.group(1), m.group(2)
+        return rec
+
+    async def redraw(self, bot: Bot, chat_id: int, message_id: int, rec: dict) -> None:
+        self._migrate(rec)  # старый формат → новый (новые записи не трогает)
+        await self.refresh(bot, chat_id, message_id, bool(rec.get("p", True)), rec)
+        rec["v2"] = True
+        self.tracks[f"{chat_id}:{message_id}"] = rec
+        await self.save_tracks()
+
     async def upgrade_cards(self, bot: Bot) -> None:
         """Один раз после обновления: перерисовать уже отправленные карточки в новом дизайне."""
         changed = 0
@@ -626,30 +704,7 @@ class MusicService:
                 continue
             try:
                 chat_id, message_id = (int(x) for x in key.split(":"))
-                raw = rec.get("t", "")
-                rec["t"], rec["ar"], rec["tags"] = youtube.parse_title(raw)
-                if not rec.get("b") and rec.get("i"):  # «⏱ 34:25 · 🎬 1080p · 643 МБ · 🎧 AAC 129 kbps»
-                    parts = [re.sub(r"^\W+", "", x).strip() for x in rec["i"].split("·")]
-                    rec["b"] = [x for x in parts if x]
-                    info = []
-                    size = next((x for x in parts if "МБ" in x or "КБ" in x), "")
-                    if rec.get("v"):
-                        info.append(f"🎬 <b>Видео со звуком</b> · 1080p{' · ' + size if size else ''} — можно смотреть и слушать")
-                    if rec.get("a"):
-                        aud = next((x for x in parts if "kbps" in x or "AAC" in x or "Opus" in x), "")
-                        info.append(f"🎧 <b>Только звук</b>{' · ' + aud if aud else ''} — оригинал без пережатия")
-                    dur = next((x for x in parts if re.fullmatch(r"\d+:\d{2}(:\d{2})?", x)), "")
-                    if dur:
-                        info.append(f"⏱ {dur}")
-                    rec["info"] = info
-                if not rec.get("log"):
-                    t = datetime.fromtimestamp(rec.get("c", time.time()), MSK).strftime("%H:%M")
-                    rec["log"] = [[t, "прислал " + (_mention(rec.get("s")) or "кто-то")],
-                                  [t, "скачано с YouTube"], [t, "на Google Диске"]]
-                    if rec.get("vk") in {"work", "done"}:
-                        rec["log"].append([rec.get("at", t).split(" ")[-1],
-                                           ("взял в работу" if rec["vk"] == "work" else "выложено в ВК") +
-                                           f" · {html.escape(rec.get('by', '').split(' ')[0])}"])
+                self._migrate(rec)
                 await self.refresh(bot, chat_id, message_id, bool(rec.get("p", True)), rec)
                 rec["v2"] = True
                 changed += 1
@@ -841,6 +896,41 @@ def setup_music_router(music: MusicService, chats=None) -> Router:
                                    reply_to_message_id=cb.message.message_id, allow_sending_without_reply=True)
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
+
+    @router.message(in_group, Command("redraw"))
+    async def redraw(message: Message, bot: Bot):
+        """/redraw ответом на карточку — перерисовать её; без ответа — все карточки группы."""
+        if not await music.can_manage(bot, message.chat.id, message.from_user.id):
+            return
+        target = message.reply_to_message
+        if target:
+            if not target.from_user or target.from_user.id != bot.id:
+                await message.reply("Ответь /redraw на карточку трека от бота.")
+                return
+            rec = music.tracks.get(f"{message.chat.id}:{target.message_id}") or music.rec_from_message(target)
+            if not rec:
+                await message.reply("Не нашёл в этой карточке ссылок на Диск — пришлите трек заново.")
+                return
+            items = [(target.message_id, rec)]
+        else:
+            items = [(int(k.split(":")[1]), r) for k, r in music.tracks.items() if k.startswith(f"{message.chat.id}:")]
+        ok, errors = 0, []
+        for mid, rec in items:
+            try:
+                await music.redraw(bot, message.chat.id, mid, rec)
+                ok += 1
+            except Exception as e:
+                log.exception("redraw %s", mid)
+                errors.append(f"{mid}: {e}")
+            await asyncio.sleep(1)
+        text = f"🎨 Перерисовано карточек: {ok}" + ("\n⚠️ " + "\n".join(errors[:5]) if errors else "")
+        reply = await message.reply(text)
+        try:  # убрать служебные сообщения, чтобы не мусорить
+            await asyncio.sleep(5)
+            await message.delete()
+            await reply.delete()
+        except Exception:
+            pass
 
     @router.message(in_group, Command("todo"))
     async def todo(message: Message):
