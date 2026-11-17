@@ -18,7 +18,7 @@ from urllib.parse import urlencode
 import aiohttp
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 log = logging.getLogger(__name__)
 
@@ -143,6 +143,13 @@ class Drive:
             if status and progress:
                 progress(status.progress())
         return resp["id"]
+
+    def download(self, fid: str, path: Path) -> None:
+        with open(path, "wb") as fh:
+            dl = MediaIoBaseDownload(fh, self.api.files().get_media(fileId=fid), chunksize=CHUNK)
+            done = False
+            while not done:
+                _, done = dl.next_chunk()
 
     def about(self) -> dict:
         return self.api.about().get(fields="user(emailAddress),storageQuota").execute()

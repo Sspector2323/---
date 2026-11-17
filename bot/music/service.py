@@ -8,7 +8,10 @@
 
 Команды в группе (админы бота или группы):
   /musichere — включить бота в этой группе;   /musicoff — выключить;
-  /publisher — ответом на сообщение Александра (или /publisher @username) — кого тегать для ВК.
+  /publisher — ответом на сообщение Александра (или /publisher @username) — кого тегать для ВК;
+  /todo — список треков, которые ещё не выложены в ВК (со ссылками на карточки).
+Карточка: обложка, цветные кнопки, «🛠 Беру в работу» → «✅ Выложил в ВК» (Виктору приходит 🎉),
+«🔊 Послушать здесь» — звук прямо в чат.
 В личке админу: /gdrive — подключить Google Диск, /music — состояние.
 """
 import asyncio
@@ -19,14 +22,16 @@ import itertools
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiohttp import web
 
 from . import gdrive, youtube
@@ -35,6 +40,9 @@ log = logging.getLogger(__name__)
 
 MSK = timezone(timedelta(hours=3))
 KEY = "music"
+TRACKS_KEY = "music_tracks"
+TRACKS_LIMIT = 100
+VID_RE = re.compile(r"(?:v=|youtu\.be/|shorts/|live/)([\w-]{11})")
 EDIT_EVERY = 3.0
 REGISTRY_SHEET = "Музыка"
 REGISTRY_HEADER = ["Дата", "Прислал", "Название", "YouTube", "Длительность", "Папка", "Видео", "Звук", "ВК"]
@@ -69,6 +77,7 @@ class Job:
         self.sender = sender
         self.title = title
         self.message_id = 0
+        self.photo = False
         self.stage = "queue"
         self.frac = 0.0
 
@@ -85,6 +94,7 @@ class MusicService:
         self.queue: asyncio.Queue[Job] = asyncio.Queue()
         self.active: dict[str, Job] = {}       # url → задача (чтобы одна ссылка не качалась дважды)
         self.failed: dict[int, Job] = {}
+        self.tracks: dict[str, dict] = {}     # "chat:msg" → карточка трека (статус ВК и т.п.)
         self._drive: gdrive.Drive | None = None
         self._worker: asyncio.Task | None = None
 
@@ -101,6 +111,20 @@ class MusicService:
         self.chats = {int(c) for c in data.get("chats", [])}
         self.publisher = data.get("publisher")
         self.token = data.get("drive") or {}
+        try:
+            raw = await self._store.get(TRACKS_KEY)
+            self.tracks = json.loads(raw) if raw else {}
+        except Exception:
+            log.exception("Не удалось загрузить карточки треков")
+
+    async def save_tracks(self) -> None:
+        while len(self.tracks) > TRACKS_LIMIT:
+            self.tracks.pop(next(iter(self.tracks)))
+        if self._store:
+            try:
+                await self._store.set(TRACKS_KEY, json.dumps(self.tracks, ensure_ascii=False, separators=(",", ":")))
+            except Exception:
+                log.exception("Не удалось сохранить карточки треков")
 
     async def save(self) -> None:
         if self._store:
@@ -201,10 +225,24 @@ class MusicService:
         ahead = len(self.active)  # уже в работе и в очереди
         self.active[url] = job
         text = "⏳ Ссылка принята" + (f", в очереди: {ahead}" if ahead else ", начинаю") + f"\n{html.escape(url)}"
-        sent = await bot.send_message(job.chat_id, text, reply_to_message_id=job.reply_to,
-                                      disable_web_page_preview=True, allow_sending_without_reply=True)
-        job.message_id = sent.message_id
+        await self._post(bot, job, text)
         await self.queue.put(job)
+
+    async def _post(self, bot: Bot, job: Job, text: str) -> None:
+        """Первое сообщение карточки: обложка YouTube + подпись (или просто текст, если обложки нет)."""
+        m = VID_RE.search(job.url)
+        if m:
+            try:
+                sent = await bot.send_photo(job.chat_id, f"https://i.ytimg.com/vi/{m.group(1)}/hqdefault.jpg",
+                                            caption=text, parse_mode="HTML", reply_to_message_id=job.reply_to,
+                                            allow_sending_without_reply=True)
+                job.message_id, job.photo = sent.message_id, True
+                return
+            except Exception as e:
+                log.info("Обложка не отправилась (%s) — карточка будет текстом", e)
+        sent = await bot.send_message(job.chat_id, text, parse_mode="HTML", reply_to_message_id=job.reply_to,
+                                      disable_web_page_preview=True, allow_sending_without_reply=True)
+        job.message_id, job.photo = sent.message_id, False
 
     def _status_text(self, job: Job) -> str:
         title = f"🎵 <b>{html.escape(job.title)}</b>" if job.title else f"🎵 {html.escape(job.url)}"
@@ -225,8 +263,7 @@ class MusicService:
             text = self._status_text(job)
             if text != last:
                 try:
-                    await bot.edit_message_text(text, chat_id=job.chat_id, message_id=job.message_id,
-                                                parse_mode="HTML", disable_web_page_preview=True)
+                    await self._raw_edit(bot, job.chat_id, job.message_id, job.photo, text)
                     last = text
                 except Exception as e:
                     if "retry after" in str(e).lower():
@@ -259,10 +296,8 @@ class MusicService:
                         continue
                     sub = Job(it["url"], job.chat_id, job.message_id, job.sender, it["title"])
                     self.active[sub.url] = sub
-                    sent = await bot.send_message(job.chat_id, f"⏳ В очереди: {html.escape(sub.title or sub.url)}",
-                                                  reply_to_message_id=job.message_id, parse_mode="HTML",
-                                                  allow_sending_without_reply=True)
-                    sub.message_id = sent.message_id
+                    sub.reply_to = job.reply_to
+                    await self._post(bot, sub, f"⏳ В очереди: {html.escape(sub.title or sub.url)}")
                     await self.queue.put(sub)
                 return
             video_id = items[0]["id"]
@@ -271,6 +306,7 @@ class MusicService:
             self._set(job, "check")
             existing = await asyncio.to_thread(drive.find_track, video_id)
             if existing:
+                existing["vid"] = video_id
                 await self._halt(ticker)
                 await self._card(bot, job, None, existing, again=True)
                 return
@@ -319,48 +355,112 @@ class MusicService:
             ticker.cancel()
             shutil.rmtree(workdir, ignore_errors=True)
 
+    @staticmethod
+    async def _raw_edit(bot: Bot, chat_id: int, message_id: int, photo: bool, text: str, kb=None) -> None:
+        if photo:
+            await bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=text,
+                                           parse_mode="HTML", reply_markup=kb)
+        else:
+            await bot.edit_message_text(text, chat_id=chat_id, message_id=message_id, parse_mode="HTML",
+                                        disable_web_page_preview=True, reply_markup=kb)
+
     async def _edit(self, bot: Bot, job: Job, text: str, kb=None) -> None:
         try:
-            await bot.edit_message_text(text, chat_id=job.chat_id, message_id=job.message_id, parse_mode="HTML",
-                                        disable_web_page_preview=True, reply_markup=kb)
-        except Exception:
-            await bot.send_message(job.chat_id, text, parse_mode="HTML", reply_markup=kb,
-                                   reply_to_message_id=job.reply_to, allow_sending_without_reply=True,
-                                   disable_web_page_preview=True)
+            await self._raw_edit(bot, job.chat_id, job.message_id, job.photo, text, kb)
+        except Exception as e:
+            if "not modified" in str(e):
+                return
+            sent = await bot.send_message(job.chat_id, text, parse_mode="HTML", reply_markup=kb,
+                                          reply_to_message_id=job.reply_to, allow_sending_without_reply=True,
+                                          disable_web_page_preview=True)
+            job.message_id, job.photo = sent.message_id, False
 
     async def _card(self, bot: Bot, job: Job, track, saved: dict, again: bool = False) -> None:
         files = saved["files"]
         video = next((f for f in files if f["name"].endswith(".mp4")), None)
         audio = next((f for f in files if f["name"].rsplit(".", 1)[-1] in {"m4a", "opus", "webm", "mp3"}), None)
-        title = track.nice_title if track else saved.get("name") or job.title
-        lines = [f"🎵 <b>{html.escape(title)}</b>"]
+        info = ""
         if track:
             q = [f"⏱ {track.duration_str}"]
             if video:
-                q.append(f"🎬 {track.height or youtube.MAX_HEIGHT}p MP4 · {_size(int(video['size']))}")
+                q.append(f"🎬 {track.height or youtube.MAX_HEIGHT}p · {_size(int(video['size']))}")
             if audio:
                 codec = {"mp4a": "AAC", "opus": "Opus"}.get(track.audio_codec, track.audio_codec.upper() or "звук")
-                q.append(f"🎧 {codec} {track.audio_kbps or ''} kbps · оригинал без пережатия".replace("  ", " "))
-            lines.append("\n".join(q))
-        else:
-            lines.append("♻️ Уже есть на Диске — отдаю готовую папку")
+                q.append(f"🎧 {codec} {track.audio_kbps} kbps" if track.audio_kbps else f"🎧 {codec}")
+            info = " · ".join(q)
+        old = next((r for r in self.tracks.values() if r.get("vid") and r["vid"] == (track.video_id if track else saved.get("vid"))
+                    and r.get("vk") == "done"), None) if again else None
+        rec = {
+            "t": track.nice_title if track else saved.get("name") or job.title,
+            "u": track.url if track else job.url, "vid": track.video_id if track else saved.get("vid", ""),
+            "i": info, "again": again, "s": job.sender, "f": saved["folder"],
+            "v": video["id"] if video else "", "a": audio["id"] if audio else "",
+            "an": audio["name"] if audio else "", "p": job.photo, "r": job.reply_to,
+            "vk": "done" if old else "wait", "by": old.get("by", "") if old else "", "at": old.get("at", "") if old else "",
+            "c": int(time.time()),
+        }
+        key = f"{job.chat_id}:{job.message_id}"
+        self.tracks[key] = rec
+        text, kb = self.render(rec)
+        await self._edit(bot, job, text, kb)
+        new_key = f"{job.chat_id}:{job.message_id}"  # карточка могла переехать в новое сообщение
+        if new_key != key:
+            self.tracks[new_key] = self.tracks.pop(key)
+            self.tracks[new_key]["p"] = job.photo
+        await self.save_tracks()
+
+    def render(self, rec: dict) -> tuple[str, InlineKeyboardMarkup]:
+        lines = [f"🎵 <b>{html.escape(rec['t'])}</b>"]
+        if rec.get("i"):
+            lines.append(rec["i"])
+        vk = rec.get("vk", "wait")
+        vk_icon = {"wait": "⏳ ВК", "work": "🛠 ВК", "done": "✅ ВК"}[vk]
+        lines.append(f"\n✅ Скачано  ·  ✅ На Диске  ·  {vk_icon}" + ("  ·  ♻️ уже было" if rec.get("again") else ""))
         lines.append("")
-        lines.append(f"👤 Прислал: {_mention(job.sender)}")
-        if self.publisher:
-            lines.append(f"📤 {_mention(self.publisher)}, выложи видео в ВК в плейлист и нажми «✅ Выложил в ВК»")
+        lines.append(f"👤 Прислал: {_mention(rec.get('s'))}")
+        pub = _mention(self.publisher) if self.publisher else ""
+        if vk == "wait":
+            lines.append(f"📤 {pub}, выложи в ВК в плейлист 👇" if pub else "📤 Публикатор не назначен — /publisher")
+        elif vk == "work":
+            lines.append(f"🛠 {html.escape(rec.get('by', ''))} выкладывает в ВК · с {rec.get('at', '')}")
         else:
-            lines.append("📤 Публикатор для ВК не назначен — /publisher ответом на его сообщение")
-        rows = [[InlineKeyboardButton(text="📁 Папка на Диске", url=gdrive.folder_url(saved["folder"]))]]
+            lines.append(f"✅ В ВК выложил {html.escape(rec.get('by', ''))} · {rec.get('at', '')}")
+
+        B = InlineKeyboardButton
+        rows = [[B(text="📁 Папка на Диске", url=gdrive.folder_url(rec["f"]), style="primary")]]
         pair = []
-        if video:
-            pair.append(InlineKeyboardButton(text="🎬 Видео", url=gdrive.file_url(video["id"])))
-        if audio:
-            pair.append(InlineKeyboardButton(text="🎧 Звук", url=gdrive.file_url(audio["id"])))
+        if rec.get("v"):
+            pair.append(B(text="🎬 Видео 1080p", url=gdrive.file_url(rec["v"])))
+        if rec.get("a"):
+            pair.append(B(text="🎧 Звук", url=gdrive.file_url(rec["a"])))
         if pair:
             rows.append(pair)
-        rows.append([InlineKeyboardButton(text="▶️ YouTube", url=track.url if track else job.url)])
-        rows.append([InlineKeyboardButton(text="✅ Выложил в ВК", callback_data="mv")])
-        await self._edit(bot, job, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows))
+        row = [B(text="▶️ YouTube", url=rec["u"])]
+        if rec.get("a"):
+            row.insert(0, B(text="🔊 Послушать здесь", callback_data="ml"))
+        rows.append(row)
+        if vk == "wait":
+            rows.append([B(text="🛠 Беру в работу", callback_data="mt", style="primary"),
+                         B(text="✅ Выложил в ВК", callback_data="mv", style="success")])
+        elif vk == "work":
+            rows.append([B(text="✅ Выложил в ВК", callback_data="mv", style="success"),
+                         B(text="↩️ Отмена", callback_data="mu")])
+        else:
+            rows.append([B(text="↩️ Снять отметку ВК", callback_data="mu", style="danger")])
+        return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+    def pending(self, chat_id: int) -> list[tuple[str, dict]]:
+        """Не выложенные треки группы; один трек — одна строка (самая свежая карточка)."""
+        latest: dict[str, tuple[str, dict]] = {}
+        for k, r in self.tracks.items():
+            if k.startswith(f"{chat_id}:"):
+                latest[r.get("vid") or k] = (k, r)
+        return [(k, r) for k, r in latest.values() if r.get("vk") != "done"]
+
+    def listen_file(self, rec: dict, workdir: Path) -> Path:
+        path = workdir / (rec.get("an") or "track.m4a")
+        self.drive().download(rec["a"], path)
+        return path
 
     # ---------- проверки ----------
     async def can_manage(self, bot: Bot, chat_id: int, user_id: int) -> bool:
@@ -399,7 +499,7 @@ def setup_music_router(music: MusicService, chats=None) -> Router:
             "\n\n⚠️ Сделайте меня администратором группы (права можно все выключить) — иначе я не вижу ссылки.")
         drive = "" if music.refresh_token else "\n☁️ Google Диск ещё не подключён — админу: /gdrive в личке бота."
         await message.reply("🎵 Готово! Кидайте сюда ссылки на YouTube — я скачаю видео в 1080p и звук отдельно, "
-                            "залью на Google Диск и пришлю ссылки." + warn + drive)
+                            "залью на Google Диск и пришлю ссылки.\n/todo — что ещё не выложено в ВК." + warn + drive)
 
     @router.message(in_group, Command("musicoff"))
     async def music_off(message: Message, bot: Bot):
@@ -435,27 +535,96 @@ def setup_music_router(music: MusicService, chats=None) -> Router:
         for url in youtube.find_links(message.text or message.caption or ""):
             await music.enqueue(bot, message, url)
 
-    @router.callback_query(F.data == "mv")
-    async def vk_done(cb: CallbackQuery, bot: Bot):
-        user = cb.from_user
-        pub = music.publisher or {}
-        allowed = (user.id in music.admin_ids or user.id == pub.get("id")
-                   or (pub.get("username") and (user.username or "").lower() == pub["username"].lower())
-                   or await music.can_manage(bot, cb.message.chat.id, user.id))
-        if not allowed:
-            await cb.answer("Отметить может публикатор или админ", show_alert=True)
+    async def may_publish(cb: CallbackQuery, bot: Bot) -> bool:
+        user, pub = cb.from_user, music.publisher or {}
+        return bool(user.id in music.admin_ids or user.id == pub.get("id")
+                    or (pub.get("username") and (user.username or "").lower() == pub["username"].lower())
+                    or await music.can_manage(bot, cb.message.chat.id, user.id))
+
+    @router.callback_query(F.data.in_({"mt", "mv", "mu"}))
+    async def vk_status(cb: CallbackQuery, bot: Bot):
+        if not await may_publish(cb, bot):
+            await cb.answer("Это кнопка публикатора 🙂", show_alert=True)
             return
+        key = f"{cb.message.chat.id}:{cb.message.message_id}"
+        rec = music.tracks.get(key)
+        if not rec:
+            await cb.answer("Карточка старая — пришлите ссылку ещё раз", show_alert=True)
+            return
+        user = cb.from_user
         when = datetime.now(MSK).strftime("%d.%m %H:%M")
-        mark = f"✅ В ВК выложил {user.full_name} · {when}"
-        text = cb.message.html_text.split("\n📤", 1)[0].rstrip() + "\n" + html.escape(mark)
-        kb = cb.message.reply_markup
-        rows = [r for r in (kb.inline_keyboard if kb else []) if not any(b.callback_data == "mv" for b in r)]
-        await cb.message.edit_text(text, parse_mode="HTML", disable_web_page_preview=True,
-                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
-        await cb.answer("Отмечено 👍")
-        yt = next((b.url for r in rows for b in r if b.url and "youtu" in b.url), "")
-        if yt:
-            await music._registry_vk(yt, f"✅ {user.full_name}, {when}")
+        prev = rec.get("vk")
+        rec["vk"] = {"mt": "work", "mv": "done", "mu": "wait"}[cb.data]
+        rec["by"], rec["at"] = (user.full_name, when) if rec["vk"] != "wait" else ("", "")
+        text, kb = music.render(rec)
+        try:
+            await music._raw_edit(bot, cb.message.chat.id, cb.message.message_id, bool(cb.message.photo), text, kb)
+        except Exception as e:
+            if "not modified" not in str(e):
+                raise
+        for other in music.tracks.values():  # другие карточки того же трека (ссылку присылали повторно)
+            if other is not rec and rec.get("vid") and other.get("vid") == rec["vid"]:
+                other.update(vk=rec["vk"], by=rec["by"], at=rec["at"])
+        await music.save_tracks()
+        await cb.answer({"work": "Взято в работу 🛠", "done": "Отмечено 🎉", "wait": "Отметка снята"}[rec["vk"]])
+        if rec["vk"] == "done" and prev != "done":
+            sender = _mention(rec.get("s"))
+            await bot.send_message(cb.message.chat.id, f"🎉 {sender}, «{html.escape(rec['t'])}» уже в ВК! "
+                                   f"Спасибо, {html.escape(user.first_name)} 🙌", parse_mode="HTML",
+                                   reply_to_message_id=cb.message.message_id, allow_sending_without_reply=True)
+        await music._registry_vk(rec["u"], f"✅ {user.full_name}, {when}" if rec["vk"] == "done"
+                                 else ("🛠 " + user.full_name if rec["vk"] == "work" else ""))
+
+    @router.callback_query(F.data == "ml")
+    async def listen(cb: CallbackQuery, bot: Bot):
+        rec = music.tracks.get(f"{cb.message.chat.id}:{cb.message.message_id}")
+        if not rec or not rec.get("a"):
+            await cb.answer("Звук не найден — откройте кнопкой «🎧 Звук»", show_alert=True)
+            return
+        if rec.get("tg"):
+            await cb.answer()
+            await bot.send_audio(cb.message.chat.id, rec["tg"], reply_to_message_id=cb.message.message_id,
+                                 allow_sending_without_reply=True)
+            return
+        await cb.answer("Секунду, достаю звук с Диска… 🎧")
+        workdir = Path(tempfile.mkdtemp(prefix="listen_"))
+        try:
+            path = await asyncio.to_thread(music.listen_file, rec, workdir)
+            artist, _, name = rec["t"].partition(" — ")
+            sent = await bot.send_audio(cb.message.chat.id, FSInputFile(path), title=name or rec["t"],
+                                        performer=artist if name else None,
+                                        reply_to_message_id=cb.message.message_id, allow_sending_without_reply=True)
+            if sent.audio:
+                rec["tg"] = sent.audio.file_id
+                await music.save_tracks()
+        except Exception as e:
+            log.exception("Музыка: не удалось отправить звук")
+            await bot.send_message(cb.message.chat.id, f"⚠️ Не получилось отправить звук: {html.escape(str(e))[:200]}",
+                                   reply_to_message_id=cb.message.message_id, allow_sending_without_reply=True)
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
+
+    @router.message(in_group, Command("todo"))
+    async def todo(message: Message):
+        if message.chat.id not in music.chats:
+            return
+        items = music.pending(message.chat.id)
+        if not items:
+            await message.reply("🎉 Всё выложено в ВК — хвостов нет!")
+            return
+        internal = str(message.chat.id).removeprefix("-100")
+        lines = [f"📋 <b>Ждут публикации в ВК: {len(items)}</b>\n"]
+        now = time.time()
+        for i, (key, r) in enumerate(items, 1):
+            link = f"https://t.me/c/{internal}/{key.split(':')[1]}"
+            days = int((now - r.get("c", now)) // 86400)
+            age = "сегодня" if days == 0 else f"{days} дн."
+            state = "🛠 " + html.escape(r.get("by", "")) if r.get("vk") == "work" else "⏳"
+            lines.append(f"{i}. <a href=\"{link}\">{html.escape(r['t'])}</a> — {state} · {age}")
+        pub = _mention(music.publisher)
+        if pub:
+            lines.append(f"\n{pub}, это твой список 👆")
+        await message.reply("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
     @router.callback_query(F.data.startswith("mr:"))
     async def retry(cb: CallbackQuery, bot: Bot):
@@ -533,3 +702,25 @@ def oauth_handler(music: MusicService, bot: Bot):
         return page("Готово ✅", "Google Диск подключён. Можно закрыть страницу и вернуться в Telegram.")
 
     return handle
+
+
+PRIVACY_HTML = """<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>
+<title>Политика конфиденциальности</title>
+<body style='font-family:system-ui;max-width:720px;margin:40px auto;padding:0 16px;line-height:1.6;background:#0b0b0c;color:#eee'>
+<h1>Политика конфиденциальности</h1>
+<p>Этот Telegram-бот сохраняет музыкальные видео, ссылки на которые участники присылают в рабочую группу,
+в Google Диск владельца бота.</p>
+<h3>Какие данные Google используются</h3>
+<p>Бот запрашивает только доступ <b>drive.file</b>: он видит и изменяет исключительно файлы и папки,
+которые создал сам. Остальное содержимое Диска боту недоступно. Также бот получает адрес почты аккаунта,
+чтобы показать администратору, какой Диск подключён.</p>
+<h3>Хранение и передача</h3>
+<p>Токен доступа хранится в закрытых настройках бота и используется только для загрузки файлов.
+Данные не продаются и не передаются третьим лицам.</p>
+<h3>Отзыв доступа</h3>
+<p>Доступ можно отозвать в любой момент: <a style='color:#d4b26a' href='https://myaccount.google.com/permissions'>myaccount.google.com/permissions</a>.</p>
+</body>"""
+
+
+async def privacy_handler(_request):
+    return web.Response(text=PRIVACY_HTML, content_type="text/html")
