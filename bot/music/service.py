@@ -1,17 +1,17 @@
 """Музыкальная группа Виктора.
 
-Виктор кидает в группу ссылку на YouTube → бот отвечает на его сообщение карточкой, которая живёт:
-⏳ в очереди → ⬇️ скачиваю видео/звук (проценты) → ☁️ загружаю на Диск → 🎵 готово.
-Готовая карточка: название, длительность, качество, кнопки «Папка / Видео / Звук / YouTube»,
-отметка Виктора и Александра (публикатора) и кнопка «✅ Выложил в ВК» — после нажатия карточка
-показывает, кто и когда выложил. Повторная ссылка не качается заново: бот отдаёт уже готовую папку.
+Ссылка на YouTube в группе → бот реагирует 👀 на сообщение и отвечает карточкой-картинкой (обложка, винил,
+название, бейджи, путь трека YouTube → Скачано → Google Диск → ВКонтакте). Картинка перерисовывается на
+каждом этапе, подпись показывает проценты и «путь трека» со временем каждого шага.
+
+Готовая карточка: кнопки «Папка / Видео со звуком / Только звук / Послушать здесь / YouTube / Текст для ВК»,
+«🛠 Беру в работу» → «✅ Выложил в ВК». После публикации Виктору приходит 🎉, на его сообщении — 🏆.
+Повторная ссылка не качается заново: бот отдаёт уже готовую папку.
 
 Команды в группе (админы бота или группы):
   /musichere — включить бота в этой группе;   /musicoff — выключить;
   /publisher — ответом на сообщение Александра (или /publisher @username) — кого тегать для ВК;
-  /todo — список треков, которые ещё не выложены в ВК (со ссылками на карточки).
-Карточка: обложка, цветные кнопки, «🛠 Беру в работу» → «✅ Выложил в ВК» (Виктору приходит 🎉),
-«🔊 Послушать здесь» — звук прямо в чат.
+  /todo — треки, которые ещё не выложены в ВК (со ссылками на карточки).
 В личке админу: /gdrive — подключить Google Диск, /music — состояние.
 """
 import asyncio
@@ -26,15 +26,27 @@ import re
 import shutil
 import tempfile
 import time
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import aiohttp
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    BufferedInputFile,
+    CallbackQuery,
+    CopyTextButton,
+    FSInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    Message,
+    ReactionTypeEmoji,
+)
 from aiohttp import web
 
-from . import gdrive, youtube
+from . import card, gdrive, youtube
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +59,13 @@ EDIT_EVERY = 3.0
 REGISTRY_SHEET = "Музыка"
 REGISTRY_HEADER = ["Дата", "Прислал", "Название", "YouTube", "Длительность", "Папка", "Видео", "Звук", "ВК"]
 GROUP_ADMIN = {"creator", "administrator"}
+AUDIO_EXT = {"m4a", "opus", "webm", "mp3"}
+# этапы скачивания → этап картинки и подпись под активным шагом
+STAGE_MAP = {
+    "queue": ("queue", "в очереди"), "info": ("download", "смотрю видео"), "check": ("download", "проверяю Диск"),
+    "video": ("download", "видео {p}%"), "audio": ("download", "звук {p}%"),
+    "up_video": ("upload", "видео {p}%"), "up_audio": ("upload", "звук {p}%"), "up_cover": ("upload", "обложка"),
+}
 
 
 def _bar(frac: float) -> str:
@@ -62,8 +81,20 @@ def _mention(user: dict | None) -> str:
     return f'<a href="tg://user?id={user["id"]}">{html.escape(user.get("name") or "публикатор")}</a>'
 
 
+def _short(user: dict | None) -> str:
+    return ((user or {}).get("name") or (user or {}).get("username") or "").split(" ")[0]
+
+
 def _size(n: int) -> str:
     return f"{n / 1024 / 1024:.0f} МБ" if n >= 1024 * 1024 else f"{n / 1024:.0f} КБ"
+
+
+def _now() -> str:
+    return datetime.now(MSK).strftime("%H:%M")
+
+
+def _hashtag(t: str) -> str:
+    return "#" + re.sub(r"[^\w]+", "", t.lower())
 
 
 class Job:
@@ -75,11 +106,17 @@ class Job:
         self.chat_id = chat_id
         self.reply_to = reply_to
         self.sender = sender
-        self.title = title
         self.message_id = 0
         self.photo = False
         self.stage = "queue"
         self.frac = 0.0
+        self.error = ""
+        self.shown = "queue"
+        m = VID_RE.search(url)
+        # rec — данные карточки; после готовности сохраняется в music.tracks
+        self.rec: dict = {"t": title, "ar": "", "tags": [], "b": [], "u": url, "vid": m.group(1) if m else "",
+                          "s": sender, "log": [[_now(), "прислал " + (_mention(sender) or "кто-то")]],
+                          "vk": "wait", "by": "", "at": "", "c": int(time.time())}
 
 
 class MusicService:
@@ -94,7 +131,8 @@ class MusicService:
         self.queue: asyncio.Queue[Job] = asyncio.Queue()
         self.active: dict[str, Job] = {}       # url → задача (чтобы одна ссылка не качалась дважды)
         self.failed: dict[int, Job] = {}
-        self.tracks: dict[str, dict] = {}     # "chat:msg" → карточка трека (статус ВК и т.п.)
+        self.tracks: dict[str, dict] = {}     # "chat:msg" → карточка трека
+        self._covers: OrderedDict[str, bytes | None] = OrderedDict()
         self._drive: gdrive.Drive | None = None
         self._worker: asyncio.Task | None = None
 
@@ -200,6 +238,7 @@ class MusicService:
     def start(self, bot: Bot) -> None:
         if self._worker is None:
             self._worker = asyncio.create_task(self._loop(bot))
+            self._upgrade = asyncio.create_task(self.upgrade_cards(bot))
 
     async def stop(self) -> None:
         if self._worker:
@@ -216,6 +255,12 @@ class MusicService:
                 self.active.pop(job.url, None)
                 self.queue.task_done()
 
+    async def react(self, bot: Bot, chat_id: int, message_id: int, emoji: str) -> None:
+        try:
+            await bot.set_message_reaction(chat_id, message_id, [ReactionTypeEmoji(emoji=emoji)])
+        except Exception as e:
+            log.debug("Реакция %s не поставилась: %s", emoji, e)
+
     async def enqueue(self, bot: Bot, message: Message, url: str) -> None:
         if url in self.active:
             return
@@ -224,50 +269,198 @@ class MusicService:
         job = Job(url, message.chat.id, message.message_id, sender)
         ahead = len(self.active)  # уже в работе и в очереди
         self.active[url] = job
-        text = "⏳ Ссылка принята" + (f", в очереди: {ahead}" if ahead else ", начинаю") + f"\n{html.escape(url)}"
-        await self._post(bot, job, text)
+        await self.react(bot, job.chat_id, job.reply_to, "👀")
+        await self._oembed(job)
+        await self._post(bot, job, f"в очереди: {ahead}" if ahead else "начинаю")
         await self.queue.put(job)
 
-    async def _post(self, bot: Bot, job: Job, text: str) -> None:
-        """Первое сообщение карточки: обложка YouTube + подпись (или просто текст, если обложки нет)."""
-        m = VID_RE.search(job.url)
-        if m:
-            try:
-                sent = await bot.send_photo(job.chat_id, f"https://i.ytimg.com/vi/{m.group(1)}/hqdefault.jpg",
-                                            caption=text, parse_mode="HTML", reply_to_message_id=job.reply_to,
-                                            allow_sending_without_reply=True)
-                job.message_id, job.photo = sent.message_id, True
-                return
-            except Exception as e:
-                log.info("Обложка не отправилась (%s) — карточка будет текстом", e)
-        sent = await bot.send_message(job.chat_id, text, parse_mode="HTML", reply_to_message_id=job.reply_to,
+    # ---------- обложка и название ещё до скачивания ----------
+    async def cover(self, vid: str) -> bytes | None:
+        if not vid:
+            return None
+        if vid in self._covers:
+            self._covers.move_to_end(vid)
+            return self._covers[vid]
+        data = None
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as s:
+            for name in ("maxresdefault", "hqdefault"):
+                try:
+                    async with s.get(f"https://i.ytimg.com/vi/{vid}/{name}.jpg") as r:
+                        if r.status == 200:
+                            data = await r.read()
+                            break
+                except Exception:
+                    continue
+        self._covers[vid] = data
+        while len(self._covers) > 20:
+            self._covers.popitem(last=False)
+        return data
+
+    async def _oembed(self, job: Job) -> None:
+        """Название и канал по ссылке — мгновенно, без скачивания (YouTube oEmbed)."""
+        if not job.rec["vid"]:
+            return
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=6)) as s:
+                async with s.get("https://www.youtube.com/oembed",
+                                 params={"url": f"https://www.youtube.com/watch?v={job.rec['vid']}", "format": "json"}) as r:
+                    data = await r.json() if r.status == 200 else {}
+        except Exception:
+            data = {}
+        if data.get("title"):
+            job.rec["t"], job.rec["ar"], job.rec["tags"] = youtube.parse_title(data["title"], data.get("author_name", ""))
+
+    # ---------- отрисовка ----------
+    async def image(self, rec: dict, stage: str, note: str = "") -> bytes:
+        notes = {}
+        for t, text in rec.get("log", []):
+            if "скачано" in text:
+                notes[1] = t
+            elif "Диске" in text:
+                notes[2] = t
+        if rec.get("vk") == "done":
+            notes[3] = f"{rec.get('by', '').split(' ')[0]} · {rec.get('at', '').split(' ')[-1]}"
+        elif rec.get("vk") == "work":
+            notes[3] = f"в работе · {rec.get('by', '').split(' ')[0]}"
+        elif stage == "ready":
+            notes[3] = f"→ {_short(self.publisher)}" if self.publisher else "нет публикатора"
+        cover = await self.cover(rec.get("vid", ""))
+        return await asyncio.to_thread(
+            card.render, cover, title=rec.get("t") or "Трек", artist=rec.get("ar", ""), badges=rec.get("b", []),
+            tags=rec.get("tags", []), stage=stage, note=note, sender=_short(rec.get("s")), step_notes=notes)
+
+    def caption(self, rec: dict, stage: str, progress: str = "", error: str = "") -> str:
+        """Подпись карточки. У фото лимит 1024 видимых символа — лишнее из «пути трека» и деталей убираем."""
+        log_items = list(rec.get("log") or [])
+        info = list(rec.get("info") or [])
+        while True:
+            text = self._caption(rec, stage, progress, error, log_items, info)
+            if len(re.sub(r"<[^>]+>", "", html.unescape(text))) <= 1000 or (len(log_items) <= 2 and not info):
+                return text
+            if len(log_items) > 3:
+                log_items.pop(1)       # «прислал» оставляем, выкидываем средние шаги
+            elif info:
+                info.pop()
+            else:
+                log_items.pop(1)
+
+    def _caption(self, rec: dict, stage: str, progress: str, error: str, log_items: list, info: list) -> str:
+        title = html.escape(rec.get("t") or rec.get("u", ""))
+        artist = html.escape(rec.get("ar", ""))
+        lines = [f"🎵 <b>{title}</b>" + (f" — {artist}" if artist else "")]
+        if info or rec.get("i"):
+            body = "\n".join(info) if info else html.escape(rec["i"])
+            lines.append(f"<blockquote expandable>{body}</blockquote>")
+        if rec.get("tags"):
+            lines.append(" ".join(_hashtag(t) for t in rec["tags"]))
+        if progress:
+            lines.append(f"\n{progress}")
+        if error:
+            lines.append(f"\n⚠️ <b>Не получилось</b>\n{html.escape(error)}")
+        if log_items:
+            path = "\n".join(f"{icon_for(text)} {t} · {text}" for t, text in log_items)
+            lines.append(f"\n<b>Путь трека</b>\n<blockquote>{path}</blockquote>")
+        if stage == "ready" and rec.get("vk") == "wait":
+            lines.append(f"📤 {_mention(self.publisher)}, твой ход — выложи в ВК в плейлист 👇" if self.publisher
+                         else "📤 Публикатор не назначен — /publisher ответом на его сообщение")
+        return "\n".join(lines)
+
+    def keyboard(self, rec: dict) -> InlineKeyboardMarkup:
+        B = InlineKeyboardButton
+        rows = [[B(text="📁 Открыть папку на Диске", url=gdrive.folder_url(rec["f"]), style="primary")]]
+        pair = []
+        if rec.get("v"):
+            pair.append(B(text="🎬 Видео со звуком", url=gdrive.file_url(rec["v"])))
+        if rec.get("a"):
+            pair.append(B(text="🎧 Только звук", url=gdrive.file_url(rec["a"])))
+        if pair:
+            rows.append(pair)
+        row = [B(text="▶️ YouTube", url=rec["u"])]
+        if rec.get("a"):
+            row.insert(0, B(text="🔊 Послушать здесь", callback_data="ml"))
+        rows.append(row)
+        vk_text = "\n".join(filter(None, [
+            f"{rec.get('ar')} — {rec.get('t')}" if rec.get("ar") else rec.get("t"),
+            " ".join(_hashtag(t) for t in rec.get("tags", [])),
+        ]))[:256]
+        rows.append([B(text="📋 Скопировать текст для ВК", copy_text=CopyTextButton(text=vk_text or rec["u"]))])
+        vk = rec.get("vk", "wait")
+        if vk == "wait":
+            rows.append([B(text="🛠 Беру в работу", callback_data="mt", style="primary"),
+                         B(text="✅ Выложил в ВК", callback_data="mv", style="success")])
+        elif vk == "work":
+            rows.append([B(text="✅ Выложил в ВК", callback_data="mv", style="success"),
+                         B(text="↩️ Отмена", callback_data="mu")])
+        else:
+            rows.append([B(text="↩️ Снять отметку ВК", callback_data="mu", style="danger")])
+        return InlineKeyboardMarkup(inline_keyboard=rows)
+
+    def card_stage(self, rec: dict) -> str:
+        return {"work": "work", "done": "done"}.get(rec.get("vk"), "ready")
+
+    # ---------- отправка и правка сообщения-карточки ----------
+    async def _post(self, bot: Bot, job: Job, note: str) -> None:
+        caption = self.caption(job.rec, "queue", f"⏳ {note}")
+        try:
+            img = await self.image(job.rec, "queue", note)
+            sent = await bot.send_photo(job.chat_id, BufferedInputFile(img, "card.jpg"), caption=caption,
+                                        parse_mode="HTML", reply_to_message_id=job.reply_to,
+                                        allow_sending_without_reply=True)
+            job.message_id, job.photo = sent.message_id, True
+            return
+        except Exception as e:
+            log.warning("Карточка-картинка не отправилась (%s) — будет текстом", e)
+        sent = await bot.send_message(job.chat_id, caption, parse_mode="HTML", reply_to_message_id=job.reply_to,
                                       disable_web_page_preview=True, allow_sending_without_reply=True)
         job.message_id, job.photo = sent.message_id, False
 
-    def _status_text(self, job: Job) -> str:
-        title = f"🎵 <b>{html.escape(job.title)}</b>" if job.title else f"🎵 {html.escape(job.url)}"
-        stage = {
-            "info": "🔎 Смотрю видео…",
-            "video": f"⬇️ Видео {youtube.MAX_HEIGHT}p  {_bar(job.frac)}",
-            "audio": f"⬇️ Звук  {_bar(job.frac)}",
-            "check": "🔎 Проверяю Диск…",
-            "up_video": f"☁️ Загружаю видео на Диск  {_bar(job.frac)}",
-            "up_audio": f"☁️ Загружаю звук на Диск  {_bar(job.frac)}",
-            "up_cover": "☁️ Обложка…",
-        }.get(job.stage, "⏳ Начинаю…")
-        return f"{title}\n{stage}"
+    async def show(self, bot: Bot, chat_id: int, message_id: int, photo: bool, caption: str, kb=None,
+                   img: bytes | None = None) -> None:
+        """Обновить карточку: картинку (если передана) и/или подпись с кнопками."""
+        try:
+            if photo and img is not None:
+                await bot.edit_message_media(
+                    InputMediaPhoto(media=BufferedInputFile(img, "card.jpg"), caption=caption, parse_mode="HTML"),
+                    chat_id=chat_id, message_id=message_id, reply_markup=kb)
+            elif photo:
+                await bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=caption,
+                                               parse_mode="HTML", reply_markup=kb)
+            else:
+                await bot.edit_message_text(caption, chat_id=chat_id, message_id=message_id, parse_mode="HTML",
+                                            disable_web_page_preview=True, reply_markup=kb)
+        except Exception as e:
+            if "not modified" not in str(e):
+                raise
+
+    def _progress(self, job: Job) -> tuple[str, str, str]:
+        """(этап картинки, подпись под шагом, строка прогресса в подписи)."""
+        stage, note = STAGE_MAP.get(job.stage, ("queue", ""))
+        p = int(job.frac * 100)
+        note = note.format(p=p)
+        line = {"download": "⬇️ Качаю", "upload": "☁️ Загружаю на Диск"}.get(stage, "⏳")
+        if "{p}" in STAGE_MAP.get(job.stage, ("", ""))[1]:
+            line += f" {note.split(' ')[0]}  {_bar(job.frac)}"
+        else:
+            line += f" · {note}"
+        return stage, note, line
 
     async def _ticker(self, bot: Bot, job: Job) -> None:
-        last = ""
+        last_caption, shown = "", job.shown
         while True:
-            text = self._status_text(job)
-            if text != last:
-                try:
-                    await self._raw_edit(bot, job.chat_id, job.message_id, job.photo, text)
-                    last = text
-                except Exception as e:
-                    if "retry after" in str(e).lower():
-                        await asyncio.sleep(10)
+            stage, note, line = self._progress(job)
+            caption = self.caption(job.rec, stage, line)
+            try:
+                if stage != shown and job.photo:
+                    img = await self.image(job.rec, stage, note)
+                    await self.show(bot, job.chat_id, job.message_id, True, caption, img=img)
+                    shown, last_caption = stage, caption
+                    job.shown = stage
+                elif caption != last_caption:
+                    await self.show(bot, job.chat_id, job.message_id, job.photo, caption)
+                    last_caption = caption
+            except Exception as e:
+                if "retry after" in str(e).lower():
+                    await asyncio.sleep(10)
             await asyncio.sleep(EDIT_EVERY)
 
     @staticmethod
@@ -290,32 +483,38 @@ class MusicService:
                 raise RuntimeError("По ссылке нет видео.")
             if len(items) > 1:  # плейлист: каждый трек — отдельная карточка
                 await self._halt(ticker)
-                await self._edit(bot, job, f"📃 Плейлист: {len(items)} видео — ставлю каждое в очередь 👇")
+                await bot.send_message(job.chat_id, f"📃 Плейлист: {len(items)} видео — каждое получит свою карточку 👇",
+                                       reply_to_message_id=job.reply_to, allow_sending_without_reply=True)
+                try:
+                    await bot.delete_message(job.chat_id, job.message_id)
+                except Exception:
+                    pass
                 for it in items:
                     if it["url"] in self.active:
                         continue
-                    sub = Job(it["url"], job.chat_id, job.message_id, job.sender, it["title"])
+                    sub = Job(it["url"], job.chat_id, job.reply_to, job.sender, it["title"])
+                    if it["title"]:
+                        sub.rec["t"], sub.rec["ar"], sub.rec["tags"] = youtube.parse_title(it["title"])
                     self.active[sub.url] = sub
-                    sub.reply_to = job.reply_to
-                    await self._post(bot, sub, f"⏳ В очереди: {html.escape(sub.title or sub.url)}")
+                    await self._post(bot, sub, "в очереди")
                     await self.queue.put(sub)
                 return
             video_id = items[0]["id"]
-            job.title = items[0]["title"] or job.title
+            job.rec["vid"] = video_id
 
             self._set(job, "check")
             existing = await asyncio.to_thread(drive.find_track, video_id)
             if existing:
-                existing["vid"] = video_id
                 await self._halt(ticker)
-                await self._card(bot, job, None, existing, again=True)
+                await self._finish(bot, job, None, existing, again=True)
                 return
 
             def on_info(tr):
-                job.title = tr.nice_title
+                job.rec.update(t=tr.name or tr.title, ar=tr.artist, tags=tr.labels or job.rec["tags"])
 
             track = await asyncio.to_thread(youtube.download, items[0]["url"], workdir,
                                             lambda st, f: self._set(job, st, f), on_info)
+            job.rec["log"].append([_now(), "скачано с YouTube"])
             when = datetime.now(MSK)
             folder = await asyncio.to_thread(drive.track_folder, track.safe_name, track.video_id, when)
             desc = f"{track.nice_title}\n{track.url}\nПрислал: {job.sender.get('name')}"
@@ -327,12 +526,12 @@ class MusicService:
                 fid = await asyncio.to_thread(drive.upload, path, folder, lambda f, s=stage: self._set(job, s, f), desc)
                 files.append({"id": fid, "name": path.name, "size": str(path.stat().st_size)})
             await self._halt(ticker)
-            await self._card(bot, job, track, {"folder": folder, "name": track.safe_name, "files": files})
+            await self._finish(bot, job, track, {"folder": folder, "name": track.safe_name, "files": files})
             links = {f["name"].rsplit(".", 1)[-1]: gdrive.file_url(f["id"]) for f in files}
             await self._registry_add([
                 when.strftime("%d.%m.%Y %H:%M"), job.sender.get("name", ""), track.nice_title, track.url,
                 track.duration_str, gdrive.folder_url(folder), links.get("mp4", ""),
-                next((v for k, v in links.items() if k in {"m4a", "opus", "webm", "mp3"}), ""), "",
+                next((v for k, v in links.items() if k in AUDIO_EXT), ""), "",
             ])
         except Exception as e:
             await self._halt(ticker)
@@ -341,10 +540,16 @@ class MusicService:
             self.failed[job.id] = job
             while len(self.failed) > 50:
                 self.failed.pop(next(iter(self.failed)))
-            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔁 Попробовать снова",
-                                                                              callback_data=f"mr:{job.id}")]])
-            title = html.escape(job.title or job.url)
-            await self._edit(bot, job, f"⚠️ Не получилось: {title}\n{html.escape(reason)}", kb)
+            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                text="🔁 Попробовать снова", callback_data=f"mr:{job.id}", style="primary")]])
+            caption = self.caption(job.rec, "error", error=reason)
+            try:
+                img = await self.image(job.rec, "error", "не получилось") if job.photo else None
+                await self.show(bot, job.chat_id, job.message_id, job.photo, caption, kb, img)
+            except Exception:
+                await bot.send_message(job.chat_id, caption, parse_mode="HTML", reply_markup=kb,
+                                       reply_to_message_id=job.reply_to, allow_sending_without_reply=True)
+            await self.react(bot, job.chat_id, job.reply_to, "😢")
             if "YOUTUBE_COOKIES" in reason or "Диск" in reason:
                 for admin_id in self.admin_ids:
                     try:
@@ -355,99 +560,106 @@ class MusicService:
             ticker.cancel()
             shutil.rmtree(workdir, ignore_errors=True)
 
-    @staticmethod
-    async def _raw_edit(bot: Bot, chat_id: int, message_id: int, photo: bool, text: str, kb=None) -> None:
-        if photo:
-            await bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=text,
-                                           parse_mode="HTML", reply_markup=kb)
-        else:
-            await bot.edit_message_text(text, chat_id=chat_id, message_id=message_id, parse_mode="HTML",
-                                        disable_web_page_preview=True, reply_markup=kb)
-
-    async def _edit(self, bot: Bot, job: Job, text: str, kb=None) -> None:
-        try:
-            await self._raw_edit(bot, job.chat_id, job.message_id, job.photo, text, kb)
-        except Exception as e:
-            if "not modified" in str(e):
-                return
-            sent = await bot.send_message(job.chat_id, text, parse_mode="HTML", reply_markup=kb,
-                                          reply_to_message_id=job.reply_to, allow_sending_without_reply=True,
-                                          disable_web_page_preview=True)
-            job.message_id, job.photo = sent.message_id, False
-
-    async def _card(self, bot: Bot, job: Job, track, saved: dict, again: bool = False) -> None:
+    async def _finish(self, bot: Bot, job: Job, track, saved: dict, again: bool = False) -> None:
         files = saved["files"]
         video = next((f for f in files if f["name"].endswith(".mp4")), None)
-        audio = next((f for f in files if f["name"].rsplit(".", 1)[-1] in {"m4a", "opus", "webm", "mp3"}), None)
-        info = ""
+        audio = next((f for f in files if f["name"].rsplit(".", 1)[-1] in AUDIO_EXT), None)
+        rec = job.rec
+        info, badges = [], []
         if track:
-            q = [f"⏱ {track.duration_str}"]
+            badges.append(f"{track.height or youtube.MAX_HEIGHT}p")
+            badges.append(track.duration_str)
             if video:
-                q.append(f"🎬 {track.height or youtube.MAX_HEIGHT}p · {_size(int(video['size']))}")
+                info.append(f"🎬 <b>Видео со звуком</b> · {track.height or youtube.MAX_HEIGHT}p · {_size(int(video['size']))}"
+                            " — можно смотреть и слушать")
+                badges.append(_size(int(video["size"])))
             if audio:
                 codec = {"mp4a": "AAC", "opus": "Opus"}.get(track.audio_codec, track.audio_codec.upper() or "звук")
-                q.append(f"🎧 {codec} {track.audio_kbps} kbps" if track.audio_kbps else f"🎧 {codec}")
-            info = " · ".join(q)
-        old = next((r for r in self.tracks.values() if r.get("vid") and r["vid"] == (track.video_id if track else saved.get("vid"))
-                    and r.get("vk") == "done"), None) if again else None
-        rec = {
-            "t": track.nice_title if track else saved.get("name") or job.title,
-            "u": track.url if track else job.url, "vid": track.video_id if track else saved.get("vid", ""),
-            "i": info, "again": again, "s": job.sender, "f": saved["folder"],
-            "v": video["id"] if video else "", "a": audio["id"] if audio else "",
-            "an": audio["name"] if audio else "", "p": job.photo, "r": job.reply_to,
-            "vk": "done" if old else "wait", "by": old.get("by", "") if old else "", "at": old.get("at", "") if old else "",
-            "c": int(time.time()),
-        }
-        key = f"{job.chat_id}:{job.message_id}"
-        self.tracks[key] = rec
-        text, kb = self.render(rec)
-        await self._edit(bot, job, text, kb)
-        new_key = f"{job.chat_id}:{job.message_id}"  # карточка могла переехать в новое сообщение
-        if new_key != key:
-            self.tracks[new_key] = self.tracks.pop(key)
-            self.tracks[new_key]["p"] = job.photo
+                kbps = f" {track.audio_kbps} kbps" if track.audio_kbps else ""
+                info.append(f"🎧 <b>Только звук</b> · {codec}{kbps} · {_size(int(audio['size']))} — оригинал без пережатия")
+                badges.append(f"{codec}{kbps}")
+            info.append(f"⏱ {track.duration_str}")
+        else:
+            prev = next((r for r in reversed(list(self.tracks.values())) if r.get("vid") == rec["vid"] and r.get("b")), None)
+            if prev:  # название, теги и бейджи — как в первой карточке этого трека
+                rec.update(t=prev.get("t", rec["t"]), ar=prev.get("ar", rec["ar"]), tags=prev.get("tags", rec["tags"]))
+                badges.extend(b for b in prev.get("b", []) if b != "уже на Диске")
+            if video:
+                info.append(f"🎬 <b>Видео со звуком</b> · {_size(int(video.get('size') or 0))}")
+            if audio:
+                info.append(f"🎧 <b>Только звук</b> · {_size(int(audio.get('size') or 0))}")
+            info.append("♻️ Этот трек уже был на Диске — отдаю готовую папку")
+            badges.append("уже на Диске")
+        rec.update(info=info, b=badges, f=saved["folder"], v=video["id"] if video else "",
+                   a=audio["id"] if audio else "", an=audio["name"] if audio else "", r=job.reply_to)
+        rec["log"].append([_now(), "на Google Диске"])
+        if again:  # если этот трек уже выкладывали — сразу «выложено»
+            old = next((r for r in self.tracks.values() if r.get("vid") == rec["vid"] and r.get("vk") == "done"), None)
+            if old:
+                rec.update(vk="done", by=old.get("by", ""), at=old.get("at", ""))
+        stage = self.card_stage(rec)
+        img = await self.image(rec, stage) if job.photo else None
+        try:
+            await self.show(bot, job.chat_id, job.message_id, job.photo, self.caption(rec, stage), self.keyboard(rec), img)
+        except Exception:
+            log.exception("Карточка не обновилась — отправляю новую")
+            sent = await bot.send_message(job.chat_id, self.caption(rec, stage), parse_mode="HTML",
+                                          reply_markup=self.keyboard(rec), reply_to_message_id=job.reply_to,
+                                          allow_sending_without_reply=True, disable_web_page_preview=True)
+            job.message_id, job.photo = sent.message_id, False
+        rec["p"] = job.photo
+        rec["v2"] = True
+        self.tracks[f"{job.chat_id}:{job.message_id}"] = rec
         await self.save_tracks()
+        await self.react(bot, job.chat_id, job.reply_to, "🔥")
 
-    def render(self, rec: dict) -> tuple[str, InlineKeyboardMarkup]:
-        lines = [f"🎵 <b>{html.escape(rec['t'])}</b>"]
-        if rec.get("i"):
-            lines.append(rec["i"])
-        vk = rec.get("vk", "wait")
-        vk_icon = {"wait": "⏳ ВК", "work": "🛠 ВК", "done": "✅ ВК"}[vk]
-        lines.append(f"\n✅ Скачано  ·  ✅ На Диске  ·  {vk_icon}" + ("  ·  ♻️ уже было" if rec.get("again") else ""))
-        lines.append("")
-        lines.append(f"👤 Прислал: {_mention(rec.get('s'))}")
-        pub = _mention(self.publisher) if self.publisher else ""
-        if vk == "wait":
-            lines.append(f"📤 {pub}, выложи в ВК в плейлист 👇" if pub else "📤 Публикатор не назначен — /publisher")
-        elif vk == "work":
-            lines.append(f"🛠 {html.escape(rec.get('by', ''))} выкладывает в ВК · с {rec.get('at', '')}")
-        else:
-            lines.append(f"✅ В ВК выложил {html.escape(rec.get('by', ''))} · {rec.get('at', '')}")
+    async def refresh(self, bot: Bot, chat_id: int, message_id: int, photo: bool, rec: dict) -> None:
+        stage = self.card_stage(rec)
+        img = await self.image(rec, stage) if photo else None
+        await self.show(bot, chat_id, message_id, photo, self.caption(rec, stage), self.keyboard(rec), img)
 
-        B = InlineKeyboardButton
-        rows = [[B(text="📁 Папка на Диске", url=gdrive.folder_url(rec["f"]), style="primary")]]
-        pair = []
-        if rec.get("v"):
-            pair.append(B(text="🎬 Видео 1080p", url=gdrive.file_url(rec["v"])))
-        if rec.get("a"):
-            pair.append(B(text="🎧 Звук", url=gdrive.file_url(rec["a"])))
-        if pair:
-            rows.append(pair)
-        row = [B(text="▶️ YouTube", url=rec["u"])]
-        if rec.get("a"):
-            row.insert(0, B(text="🔊 Послушать здесь", callback_data="ml"))
-        rows.append(row)
-        if vk == "wait":
-            rows.append([B(text="🛠 Беру в работу", callback_data="mt", style="primary"),
-                         B(text="✅ Выложил в ВК", callback_data="mv", style="success")])
-        elif vk == "work":
-            rows.append([B(text="✅ Выложил в ВК", callback_data="mv", style="success"),
-                         B(text="↩️ Отмена", callback_data="mu")])
-        else:
-            rows.append([B(text="↩️ Снять отметку ВК", callback_data="mu", style="danger")])
-        return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    async def upgrade_cards(self, bot: Bot) -> None:
+        """Один раз после обновления: перерисовать уже отправленные карточки в новом дизайне."""
+        changed = 0
+        for key, rec in list(self.tracks.items()):
+            if rec.get("v2"):
+                continue
+            try:
+                chat_id, message_id = (int(x) for x in key.split(":"))
+                raw = rec.get("t", "")
+                rec["t"], rec["ar"], rec["tags"] = youtube.parse_title(raw)
+                if not rec.get("b") and rec.get("i"):  # «⏱ 34:25 · 🎬 1080p · 643 МБ · 🎧 AAC 129 kbps»
+                    parts = [re.sub(r"^\W+", "", x).strip() for x in rec["i"].split("·")]
+                    rec["b"] = [x for x in parts if x]
+                    info = []
+                    size = next((x for x in parts if "МБ" in x or "КБ" in x), "")
+                    if rec.get("v"):
+                        info.append(f"🎬 <b>Видео со звуком</b> · 1080p{' · ' + size if size else ''} — можно смотреть и слушать")
+                    if rec.get("a"):
+                        aud = next((x for x in parts if "kbps" in x or "AAC" in x or "Opus" in x), "")
+                        info.append(f"🎧 <b>Только звук</b>{' · ' + aud if aud else ''} — оригинал без пережатия")
+                    dur = next((x for x in parts if re.fullmatch(r"\d+:\d{2}(:\d{2})?", x)), "")
+                    if dur:
+                        info.append(f"⏱ {dur}")
+                    rec["info"] = info
+                if not rec.get("log"):
+                    t = datetime.fromtimestamp(rec.get("c", time.time()), MSK).strftime("%H:%M")
+                    rec["log"] = [[t, "прислал " + (_mention(rec.get("s")) or "кто-то")],
+                                  [t, "скачано с YouTube"], [t, "на Google Диске"]]
+                    if rec.get("vk") in {"work", "done"}:
+                        rec["log"].append([rec.get("at", t).split(" ")[-1],
+                                           ("взял в работу" if rec["vk"] == "work" else "выложено в ВК") +
+                                           f" · {html.escape(rec.get('by', '').split(' ')[0])}"])
+                await self.refresh(bot, chat_id, message_id, bool(rec.get("p", True)), rec)
+                rec["v2"] = True
+                changed += 1
+            except Exception as e:
+                log.warning("Карточку %s не удалось перерисовать: %s", key, e)
+                rec["v2"] = True  # не пытаться бесконечно (сообщение могли удалить)
+            await asyncio.sleep(1.5)
+        if changed:
+            log.info("Перерисовано карточек в новом дизайне: %s", changed)
+        await self.save_tracks()
 
     def pending(self, chat_id: int) -> list[tuple[str, dict]]:
         """Не выложенные треки группы; один трек — одна строка (самая свежая карточка)."""
@@ -483,6 +695,26 @@ class MusicService:
                 f"👥 Группы: {html.escape(groups)}\n📤 Публикатор ВК: {_mention(self.publisher) or 'не назначен'}\n"
                 f"🍪 YouTube cookies: {cookies}\n🌐 Прокси: {proxy}\n⏳ В работе: {len(self.active)}")
 
+
+
+
+def icon_for(text: str) -> str:
+    for key, icon in (("прислал", "📥"), ("скачано", "⬇️"), ("Диске", "☁️"), ("взял", "🛠"), ("выложено", "✅"),
+                      ("снята", "↩️")):
+        if key in text:
+            return icon
+    return "•"
+
+
+
+def _thumb(cover: bytes) -> bytes:
+    """Квадратная миниатюра для аудио в Telegram (до 320px, JPEG)."""
+    import io
+    from PIL import Image, ImageOps
+    img = Image.open(io.BytesIO(cover)).convert("RGB")
+    out = io.BytesIO()
+    ImageOps.fit(card._trim(img), (320, 320)).save(out, "JPEG", quality=85)
+    return out.getvalue()
 
 def setup_music_router(music: MusicService, chats=None) -> Router:
     router = Router()
@@ -556,22 +788,23 @@ def setup_music_router(music: MusicService, chats=None) -> Router:
         prev = rec.get("vk")
         rec["vk"] = {"mt": "work", "mv": "done", "mu": "wait"}[cb.data]
         rec["by"], rec["at"] = (user.full_name, when) if rec["vk"] != "wait" else ("", "")
-        text, kb = music.render(rec)
-        try:
-            await music._raw_edit(bot, cb.message.chat.id, cb.message.message_id, bool(cb.message.photo), text, kb)
-        except Exception as e:
-            if "not modified" not in str(e):
-                raise
+        rec.setdefault("log", [])
+        rec["log"].append([_now(), {"work": f"{html.escape(user.first_name)} взял в работу",
+                                    "done": f"выложено в ВК · {html.escape(user.first_name)}",
+                                    "wait": "отметка ВК снята"}[rec["vk"]]])
+        rec["log"] = rec["log"][-8:]
+        await cb.answer({"work": "Взято в работу 🛠", "done": "Отмечено 🎉", "wait": "Отметка снята"}[rec["vk"]])
+        await music.refresh(bot, cb.message.chat.id, cb.message.message_id, bool(cb.message.photo), rec)
         for other in music.tracks.values():  # другие карточки того же трека (ссылку присылали повторно)
             if other is not rec and rec.get("vid") and other.get("vid") == rec["vid"]:
                 other.update(vk=rec["vk"], by=rec["by"], at=rec["at"])
         await music.save_tracks()
-        await cb.answer({"work": "Взято в работу 🛠", "done": "Отмечено 🎉", "wait": "Отметка снята"}[rec["vk"]])
         if rec["vk"] == "done" and prev != "done":
-            sender = _mention(rec.get("s"))
-            await bot.send_message(cb.message.chat.id, f"🎉 {sender}, «{html.escape(rec['t'])}» уже в ВК! "
+            await bot.send_message(cb.message.chat.id, f"🎉 {_mention(rec.get('s'))}, «{html.escape(rec['t'])}» уже в ВК! "
                                    f"Спасибо, {html.escape(user.first_name)} 🙌", parse_mode="HTML",
                                    reply_to_message_id=cb.message.message_id, allow_sending_without_reply=True)
+            if rec.get("r"):
+                await music.react(bot, cb.message.chat.id, rec["r"], "🏆")
         await music._registry_vk(rec["u"], f"✅ {user.full_name}, {when}" if rec["vk"] == "done"
                                  else ("🛠 " + user.full_name if rec["vk"] == "work" else ""))
 
@@ -579,7 +812,7 @@ def setup_music_router(music: MusicService, chats=None) -> Router:
     async def listen(cb: CallbackQuery, bot: Bot):
         rec = music.tracks.get(f"{cb.message.chat.id}:{cb.message.message_id}")
         if not rec or not rec.get("a"):
-            await cb.answer("Звук не найден — откройте кнопкой «🎧 Звук»", show_alert=True)
+            await cb.answer("Звук не найден — откройте кнопкой «🎧 Только звук»", show_alert=True)
             return
         if rec.get("tg"):
             await cb.answer()
@@ -590,9 +823,14 @@ def setup_music_router(music: MusicService, chats=None) -> Router:
         workdir = Path(tempfile.mkdtemp(prefix="listen_"))
         try:
             path = await asyncio.to_thread(music.listen_file, rec, workdir)
-            artist, _, name = rec["t"].partition(" — ")
-            sent = await bot.send_audio(cb.message.chat.id, FSInputFile(path), title=name or rec["t"],
-                                        performer=artist if name else None,
+            if path.stat().st_size > 49 * 1024 * 1024:
+                raise RuntimeError("файл больше 50 МБ — Telegram не даёт ботам отправлять такие. Откройте «🎧 Только звук».")
+            cover = await music.cover(rec.get("vid", ""))
+            thumb = None
+            if cover:
+                thumb = BufferedInputFile(await asyncio.to_thread(_thumb, cover), "thumb.jpg")
+            sent = await bot.send_audio(cb.message.chat.id, FSInputFile(path), title=rec.get("t"),
+                                        performer=rec.get("ar") or None, thumbnail=thumb,
                                         reply_to_message_id=cb.message.message_id, allow_sending_without_reply=True)
             if sent.audio:
                 rec["tg"] = sent.audio.file_id
@@ -619,8 +857,9 @@ def setup_music_router(music: MusicService, chats=None) -> Router:
             link = f"https://t.me/c/{internal}/{key.split(':')[1]}"
             days = int((now - r.get("c", now)) // 86400)
             age = "сегодня" if days == 0 else f"{days} дн."
-            state = "🛠 " + html.escape(r.get("by", "")) if r.get("vk") == "work" else "⏳"
-            lines.append(f"{i}. <a href=\"{link}\">{html.escape(r['t'])}</a> — {state} · {age}")
+            state = "🛠 " + html.escape(r.get("by", "").split(" ")[0]) if r.get("vk") == "work" else "⏳"
+            name = f"{r.get('ar')} — {r['t']}" if r.get("ar") else r["t"]
+            lines.append(f"{i}. <a href=\"{link}\">{html.escape(name)}</a> — {state} · {age}")
         pub = _mention(music.publisher)
         if pub:
             lines.append(f"\n{pub}, это твой список 👆")
@@ -636,10 +875,16 @@ def setup_music_router(music: MusicService, chats=None) -> Router:
             await cb.answer("Уже в работе")
             return
         music.active[job.url] = job
-        job.stage = "queue"
-        await cb.message.edit_text(f"⏳ Пробую снова\n{html.escape(job.url)}", disable_web_page_preview=True)
+        music._set(job, "queue")
+        job.rec["log"].append([_now(), "пробую снова"])
+        await cb.answer("Пробую снова 🔁")
+        try:
+            img = await music.image(job.rec, "queue", "пробую снова") if job.photo else None
+            await music.show(bot, job.chat_id, job.message_id, job.photo,
+                             music.caption(job.rec, "queue", "⏳ пробую снова"), None, img)
+        except Exception:
+            pass
         await music.queue.put(job)
-        await cb.answer()
 
     # ---------- личка админа ----------
     is_admin = (F.chat.type == "private") & F.from_user.id.func(lambda uid: uid in music.admin_ids)
