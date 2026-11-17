@@ -54,6 +54,10 @@ class Config:
     profit_source: str = ""
     profit_mode: str = "auto"
     port: int = 8080
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    google_drive_refresh_token: str = ""
+    music_drive_folder: str = "Музыка Витуса"
 
 
 def load_config() -> Config:
@@ -81,4 +85,8 @@ def load_config() -> Config:
         profit_source=_env("PROFIT_SOURCE", "profithata777").strip().lstrip("@").lower(),
         profit_mode=_env("PROFIT_REPOST_MODE", "auto").strip().lower(),
         port=int(_env("PORT", "8080")),
+        google_oauth_client_id=_env("GOOGLE_OAUTH_CLIENT_ID").strip(),
+        google_oauth_client_secret=_env("GOOGLE_OAUTH_CLIENT_SECRET").strip(),
+        google_drive_refresh_token=_env("GOOGLE_DRIVE_REFRESH_TOKEN").strip(),
+        music_drive_folder=_env("MUSIC_DRIVE_FOLDER", "Музыка Витуса").strip() or "Музыка Витуса",
     )
