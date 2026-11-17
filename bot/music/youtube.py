@@ -37,6 +37,53 @@ VIDEO_FORMAT = (
 )
 
 
+_JUNK = re.compile(r"official|video|audio|lyric|visuali[sz]er|clip|\bmv\b|\b4k\b|\bhd\b|\bhq\b|remaster|"
+                   r"премьера|клип|full album|album|live|extended|mix|edit|version|prod\.|ft\.|feat\.", re.I)
+_LATIN_CYR = re.compile(r"[A-Za-zА-Яа-яЁё0-9]")
+
+
+def parse_title(raw: str, uploader: str = "", artist: str = "", track: str = "") -> tuple[str, str, list[str]]:
+    """«Artist - Title (Official Video) | Genre» → (название, исполнитель, теги)."""
+    uploader = re.sub(r"\s*(- Topic|VEVO|Official|Music)$", "", uploader or "", flags=re.I).strip()
+    if track and artist:
+        return track.strip(), artist.split(",")[0].strip(), []
+    parts = [p.strip() for p in re.split(r"\s[|｜]\s|\s//\s", raw or "") if p.strip()]
+    main, extras = (parts[0] if parts else raw or ""), parts[1:]
+    tags: list[str] = []
+
+    def strip_brackets(m):
+        inner = m.group(1).strip()
+        if not _LATIN_CYR.search(inner):          # (द्रवसिद्धान्त), (官方) — убираем
+            return ""
+        if _JUNK.search(inner):
+            tags.append(inner)
+            return ""
+        return m.group(0)
+    main = re.sub(r"[(\[]([^()\[\]]*)[)\]]", strip_brackets, main)
+    tail_artist = ""
+    for ex in extras:                               # «Full Album (Psybient & Organic Downtempo) - Liquid Dunes»
+        m_art = re.search(r"\s[-–—]\s([^()\[\]]+)$", ex)
+        if m_art:
+            tail_artist = tail_artist or m_art.group(1).strip()
+            ex = ex[:m_art.start()]
+        for piece in re.split(r"[()\[\]]", ex):
+            for t in re.split(r"\s*[&,/]\s*", piece):
+                if t.strip() and _LATIN_CYR.search(t):
+                    tags.append(t.strip())
+    main = re.sub(r"\s{2,}", " ", main).strip(" -–—|")
+    who = artist.split(",")[0].strip() if artist else tail_artist
+    m = re.match(r"^(.+?)\s+[-–—]\s+(.+)$", main)
+    if m and not who:
+        who, main = m.group(1).strip(), m.group(2).strip()
+    elif m and who and m.group(1).strip().lower() == who.lower():
+        main = m.group(2).strip()
+    drop = re.compile(r"official|video|clip|клип|lyric|audio|visuali[sz]er|\b4k\b|\bhd\b|\bhq\b|премьера", re.I)
+    names = {x.lower() for x in (who, uploader, tail_artist) if x}
+    tags = [t.strip(" -–—") for t in tags]
+    tags = [t for t in dict.fromkeys(tags) if t and not drop.search(t) and len(t) <= 30 and t.lower() not in names]
+    return main or raw, who or uploader, tags[:6]
+
+
 def find_links(text: str) -> list[str]:
     seen, out = set(), []
     for m in LINK_RE.findall(text or ""):
@@ -127,9 +174,14 @@ class Track:
     video_path: Path | None = None
     audio_path: Path | None = None
     cover_path: Path | None = None
+    name: str = ""          # чистое название
+    artist: str = ""        # исполнитель
+    labels: list[str] = field(default_factory=list)  # Full Album, жанры и т.п. из названия
 
     @property
     def nice_title(self) -> str:
+        if self.name:
+            return f"{self.artist} — {self.name}" if self.artist else self.name
         t = self.title
         if " - " not in t and " — " not in t and self.uploader:
             t = f"{self.uploader.removesuffix(' - Topic')} — {t}"
@@ -185,6 +237,8 @@ def download(url: str, workdir: Path, progress: Callable[[str, float], None] | N
                   uploader=info.get("artist") or info.get("uploader") or info.get("channel") or "",
                   duration=int(info.get("duration") or 0), tags=list(info.get("tags") or [])[:20],
                   description=(info.get("description") or "")[:2000])
+    track.name, track.artist, track.labels = parse_title(
+        track.title, info.get("channel") or info.get("uploader") or "", info.get("artist") or "", info.get("track") or "")
     if on_info:
         on_info(track)
     base = workdir / track.safe_name

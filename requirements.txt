@@ -1,8 +1,9 @@
 aiogram>=3.13,<4
 openai>=1.50
 gspread>=6.1,<7
-# Музыкальная группа: YouTube → Google Диск
+# Музыкальная группа: YouTube → Google Диск (Pillow рисует карточки)
 yt-dlp[default]>=2026.10.26
 deno>=2.5
 imageio-ffmpeg>=0.6
 google-api-python-client>=2.150
+Pillow>=10.4
