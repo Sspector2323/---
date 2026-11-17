@@ -15,6 +15,7 @@ from .ai import AIResponder
 from .config import load_config
 from .handlers import setup_chat_router, setup_router
 from .mirrors import Mirrors
+from .music.service import MusicService, oauth_handler, setup_music_router
 from .chats import ChatRegistry
 from .repost import RepostHub, Reposter
 from .sheets import PlayersSheet, SettingsStore
@@ -36,6 +37,8 @@ ADMIN_COMMANDS = [
     BotCommand(command="admin", description="Подсказка по командам"),
     BotCommand(command="mirrors", description="Обновить зеркала из закрепа"),
     BotCommand(command="reposts", description="Пересылки между каналами"),
+    BotCommand(command="music", description="Музыкальная группа: состояние"),
+    BotCommand(command="gdrive", description="Подключить Google Диск для музыки"),
     BotCommand(command="myid", description="Мой Telegram ID"),
     BotCommand(command="usermode", description="Режим обычного пользователя вкл/выкл"),
 ]
@@ -73,7 +76,10 @@ async def main() -> None:
     await feed.load()
     mirrors = Mirrors(settings, cfg.mirrors_channel_id, cfg.admin_ids)
     await mirrors.load()
+    music = MusicService(settings, sheet, cfg)
+    await music.load()
     log.info("Приветствие: %s", "своё (из таблицы)" if welcome.current else "стандартное")
+    dp.include_router(setup_music_router(music, chats))  # раньше группового роутера: ссылки в музыкальной группе
     dp.include_router(setup_chat_router(chats, cfg.admin_ids, reposter))
     dp.include_router(setup_router(cfg, sheet, ai, reposter, welcome, feed, mirrors, chats))
 
@@ -93,7 +99,9 @@ async def main() -> None:
     except Exception as e:
         log.warning("Не удалось вернуть кнопку меню команд: %s", e)
     channels = {"stream": f"@{cfg.source_channel}", "promo": cfg.promo_channel_id}
-    runner = await start_server(create_app(bot, cfg.telegram_token, feed, channels, mirrors), cfg.port)
+    app = create_app(bot, cfg.telegram_token, feed, channels, mirrors)
+    app.router.add_get("/oauth/google", oauth_handler(music, bot))
+    runner = await start_server(app, cfg.port)
     if not cfg.webapp_url:
         log.warning("WEBAPP_URL не задан — кнопки ведут на старые страницы Framer")
     # Названия каналов из пересылок — сразу в список чатов, чтобы в /reposts не было голых номеров
@@ -109,11 +117,13 @@ async def main() -> None:
         log.info("Пересылка «%s»: @%s → %s, режим %s", r.title, r.source, r.targets or "не выбрано", r.mode)
     try:
         mirrors_task = asyncio.create_task(mirrors.loop(bot))  # закреп с зеркалами — при запуске и раз в 30 минут
+        music.start(bot)  # очередь скачивания музыки
         await dp.start_polling(
             bot, allowed_updates=["message", "callback_query", "channel_post", "edited_channel_post", "my_chat_member"]
         )
     finally:
         mirrors_task.cancel()
+        await music.stop()
         await runner.cleanup()
 
 
