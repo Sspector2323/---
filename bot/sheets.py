@@ -1,7 +1,7 @@
 """Google Sheets «База игроков»: запись каждого сообщения и чтение базы для рассылок."""
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 
 import gspread
 

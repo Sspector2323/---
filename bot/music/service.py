@@ -238,6 +238,7 @@ class MusicService:
     def start(self, bot: Bot) -> None:
         if self._worker is None:
             self._worker = asyncio.create_task(self._loop(bot))
+            self._upgrade = asyncio.create_task(self.upgrade_cards(bot))
 
     async def stop(self) -> None:
         if self._worker:
@@ -607,6 +608,7 @@ class MusicService:
                                           allow_sending_without_reply=True, disable_web_page_preview=True)
             job.message_id, job.photo = sent.message_id, False
         rec["p"] = job.photo
+        rec["v2"] = True
         self.tracks[f"{job.chat_id}:{job.message_id}"] = rec
         await self.save_tracks()
         await self.react(bot, job.chat_id, job.reply_to, "🔥")
@@ -615,6 +617,49 @@ class MusicService:
         stage = self.card_stage(rec)
         img = await self.image(rec, stage) if photo else None
         await self.show(bot, chat_id, message_id, photo, self.caption(rec, stage), self.keyboard(rec), img)
+
+    async def upgrade_cards(self, bot: Bot) -> None:
+        """Один раз после обновления: перерисовать уже отправленные карточки в новом дизайне."""
+        changed = 0
+        for key, rec in list(self.tracks.items()):
+            if rec.get("v2"):
+                continue
+            try:
+                chat_id, message_id = (int(x) for x in key.split(":"))
+                raw = rec.get("t", "")
+                rec["t"], rec["ar"], rec["tags"] = youtube.parse_title(raw)
+                if not rec.get("b") and rec.get("i"):  # «⏱ 34:25 · 🎬 1080p · 643 МБ · 🎧 AAC 129 kbps»
+                    parts = [re.sub(r"^\W+", "", x).strip() for x in rec["i"].split("·")]
+                    rec["b"] = [x for x in parts if x]
+                    info = []
+                    size = next((x for x in parts if "МБ" in x or "КБ" in x), "")
+                    if rec.get("v"):
+                        info.append(f"🎬 <b>Видео со звуком</b> · 1080p{' · ' + size if size else ''} — можно смотреть и слушать")
+                    if rec.get("a"):
+                        aud = next((x for x in parts if "kbps" in x or "AAC" in x or "Opus" in x), "")
+                        info.append(f"🎧 <b>Только звук</b>{' · ' + aud if aud else ''} — оригинал без пережатия")
+                    dur = next((x for x in parts if re.fullmatch(r"\d+:\d{2}(:\d{2})?", x)), "")
+                    if dur:
+                        info.append(f"⏱ {dur}")
+                    rec["info"] = info
+                if not rec.get("log"):
+                    t = datetime.fromtimestamp(rec.get("c", time.time()), MSK).strftime("%H:%M")
+                    rec["log"] = [[t, "прислал " + (_mention(rec.get("s")) or "кто-то")],
+                                  [t, "скачано с YouTube"], [t, "на Google Диске"]]
+                    if rec.get("vk") in {"work", "done"}:
+                        rec["log"].append([rec.get("at", t).split(" ")[-1],
+                                           ("взял в работу" if rec["vk"] == "work" else "выложено в ВК") +
+                                           f" · {html.escape(rec.get('by', '').split(' ')[0])}"])
+                await self.refresh(bot, chat_id, message_id, bool(rec.get("p", True)), rec)
+                rec["v2"] = True
+                changed += 1
+            except Exception as e:
+                log.warning("Карточку %s не удалось перерисовать: %s", key, e)
+                rec["v2"] = True  # не пытаться бесконечно (сообщение могли удалить)
+            await asyncio.sleep(1.5)
+        if changed:
+            log.info("Перерисовано карточек в новом дизайне: %s", changed)
+        await self.save_tracks()
 
     def pending(self, chat_id: int) -> list[tuple[str, dict]]:
         """Не выложенные треки группы; один трек — одна строка (самая свежая карточка)."""
