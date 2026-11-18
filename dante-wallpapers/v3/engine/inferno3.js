@@ -14,9 +14,10 @@
   const on = (v) => !(v === "0" || v === 0 || v === false);
   cfg.quotes = on(cfg.quotes); cfg.poets = on(cfg.poets);
   const BASE = window.INFERNO_ASSETS || "assets/";
+  const LAYOUTS = window.INFERNO_LAYOUTS, ART = window.INFERNO_ART;
 
   const TAU = Math.PI * 2, OUTRO = 14;
-  const WIN_W = 608, WIN_H = 880, TOP = 24, GAP = 24;
+  const WIN_W = 608, WIN_H = 880; // «стандартное» окно, по которому размечены эффекты и частицы
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
   const smooth = (t) => t * t * (3 - 2 * t);
@@ -112,7 +113,7 @@
         BR(0.5, 0.5, 0.2, 0.13, 0.01, 0.55, 0.8, 0.5, 0.62), SW(0.5, 0.4, 0.05, 0.04, 0.03, 1.4, 0, 0.5, 0.37),
         F(0.5, 0.62, 0.7, 0.07, 0.008, 0.15, 4, 1, 0), F(0.5, 0.85, 0.6, 0.15, 0.004, 0.05, 6, 1, 0),
         GLOW(0.5, 0.392, 0.012, 0.35, 1.2, [255, 60, 40]), GLOW(0.5, 0.67, 0.1, 0.3, 0.5, [200, 30, 30])],
-      parts: { snow: 220, breath: [[0.43, 0.43], [0.5, 0.42], [0.57, 0.43]] },
+      focusY: 0.42, parts: { snow: 220, breath: [[0.43, 0.43], [0.5, 0.42], [0.57, 0.43]] },
     },
   ];
 
@@ -128,7 +129,8 @@ in vec2 p; out vec2 vUv; void main(){ vUv = vec2(p.x*0.5+0.5, 0.5-p.y*0.5); gl_P
   const FS = `#version 300 es
 precision highp float;
 in vec2 vUv; out vec4 o;
-uniform sampler2D tex; uniform float t, aspect, dim, flash, archR, archH;
+uniform sampler2D tex; uniform float t, aspect, dim, flash, winAspect, archHa;
+uniform vec4 map, stdr;
 uniform int n; uniform vec4 A[${MAXFX}], B[${MAXFX}], Cc[${MAXFX}];
 float h(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
 float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
@@ -137,13 +139,12 @@ float fbm(vec2 p){ float s=0., a=.5; for(int i=0;i<4;i++){ s+=a*vn(p); p*=2.03; 
 float msk(vec2 uv, vec4 a, vec4 b){ vec2 d=(uv-a.yz)/vec2(a.w,b.x); return 1.-smoothstep(.45,1.,length(d)); }
 void main(){
   vec2 uv0 = vUv;
-  // стрельчатая арка: всё вне её прозрачно
-  float ax = (uv0.x-.5)*aspect, ay = uv0.y*1.0;
-  if (ay < archH) { float cxl = -.5*aspect + archR, cxr = .5*aspect - archR;
-    float yl = archH - sqrt(max(archR*archR-(ax-cxl)*(ax-cxl),0.)), yr = archH - sqrt(max(archR*archR-(ax-cxr)*(ax-cxr),0.));
-    if (ay < (ax<0.? yl: yr)) discard; }
-  // медленный «дрейф камеры»
-  vec2 uv = .5 + (uv0-.5)*.965 + vec2(sin(t*.043), cos(t*.031))*.008;
+  // стрельчатая арка: всё вне её прозрачно (профиль как в раме)
+  if (uv0.y < archHa) { float s = min(uv0.x, 1.-uv0.x); float pr = sqrt(max(.3844-(s-.62)*(s-.62),0.))/.6083;
+    if (uv0.y < archHa*(1.-pr)) discard; }
+  // медленный «дрейф камеры», затем окно -> картина -> стандартное окно
+  vec2 uw = .5 + (uv0-.5)*.965 + vec2(sin(t*.043), cos(t*.031))*.008;
+  vec2 uv = (map.xy + uw*map.zw - stdr.xy)/stdr.zw;
   vec2 d = vec2(0.); vec3 add = vec3(0.); float br = 1.;
   for (int i=0;i<${MAXFX};i++){ if(i>=n) break;
     vec4 a=A[i], b=B[i], c=Cc[i]; int ty=int(a.x+.5); float m=msk(uv,a,b);
@@ -158,7 +159,7 @@ void main(){
     else if (ty==6){ d -= (uv-c.xy)*amp*sin(t*sp+ph)*m; }
     else if (ty==7){ float s=sin(t*sp+ph); d += c.xy*amp*sign(s)*pow(abs(s),.6)*m; }
   }
-  vec3 col = texture(tex, clamp(uv+d, .001, .999)).rgb;
+  vec3 col = texture(tex, clamp(stdr.xy + (uv+d)*stdr.zw, .001, .999)).rgb;
   col *= br;
   col = 1.-(1.-col)*(1.-add);          // свет — «экраном», не выжигает
   col += flash*vec3(.8,.85,1.)*(.35+.65*col);
@@ -176,7 +177,7 @@ void main(){
     if (!v || !f) return false;
     prog = gl.createProgram(); gl.attachShader(prog, v); gl.attachShader(prog, f); gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(prog)); return false; }
-    for (const u of ["tex", "t", "aspect", "dim", "flash", "archR", "archH", "n", "A", "B", "Cc"]) locs[u] = gl.getUniformLocation(prog, u);
+    for (const u of ["tex", "t", "aspect", "dim", "flash", "winAspect", "archHa", "map", "stdr", "n", "A", "B", "Cc"]) locs[u] = gl.getUniformLocation(prog, u);
     quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, quad);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     const lp = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(lp); gl.vertexAttribPointer(lp, 2, gl.FLOAT, false, 0, 0);
@@ -196,16 +197,22 @@ void main(){
     s.fx.slice(0, MAXFX).forEach((e, i) => { A.set(e.slice(0, 4), i * 4); B.set(e.slice(4, 8), i * 4); Cc.set(e.slice(8, 12), i * 4); });
     return { A, B, Cc, n: Math.min(MAXFX, s.fx.length) };
   });
-  const ARCH_R = 0.62 * WIN_W, ARCH_H = Math.sqrt(ARCH_R ** 2 - (ARCH_R - WIN_W / 2) ** 2);
+  // какую часть картины показать в окне w x h (обрезка «по покрытию», с центром картины круга)
+  function viewRect(idx, w, h) {
+    const sp = ART[idx + 1], A = sp.aspect, a = w / h, std = sp.win;
+    if (a <= A) { const du = a / A, fx = std[0] + std[2] / 2; return [clamp(fx - du / 2, 0, 1 - du), 0, du, 1]; }
+    const dv = A / a, fy = SCENES[idx].focusY ?? 0.5; return [0, clamp(fy - dv / 2, 0, 1 - dv), 1, dv];
+  }
 
-  function drawGLWindow(idx, rect, t, dim, flash) {
+  function drawGLWindow(idx, rect, t, dim, flash, win) {
     const [x, y, w, h] = rect; // в пикселях устройства, y от верха
     gl.viewport(x, glc.height - y - h, w, h);
     gl.useProgram(prog);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, textures[idx]);
     gl.uniform1i(locs.tex, 0); gl.uniform1f(locs.t, t); gl.uniform1f(locs.aspect, WIN_W / WIN_H);
     gl.uniform1f(locs.dim, dim); gl.uniform1f(locs.flash, flash);
-    gl.uniform1f(locs.archR, ARCH_R / WIN_H); gl.uniform1f(locs.archH, ARCH_H / WIN_H);
+    gl.uniform1f(locs.winAspect, win.w / win.h); gl.uniform1f(locs.archHa, win.ha / win.h);
+    gl.uniform4fv(locs.map, viewRect(idx, win.w, win.h)); gl.uniform4fv(locs.stdr, ART[idx + 1].win);
     const P = packed[idx];
     gl.uniform1i(locs.n, P.n); gl.uniform4fv(locs.A, P.A); gl.uniform4fv(locs.B, P.B); gl.uniform4fv(locs.Cc, P.Cc);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -237,16 +244,16 @@ void main(){
 
   function initParts(sc, r) {
     const P = sc.parts, W = WIN_W, H = WIN_H, st = {};
-    if (P.ash) st.ash = Array.from({ length: P.ash }, () => ({ x: r() * W, y: r() * H, s: r(), ph: r() * TAU }));
+    if (P.ash) st.ash = Array.from({ length: P.ash }, () => ({ x: (r() * 1.6 - 0.3) * W, y: r() * H, s: r(), ph: r() * TAU }));
     if (P.flakes) st.flakes = Array.from({ length: P.flakes }, () => ({ a: r() * TAU, rr: r(), y: r(), s: r() }));
     if (P.streaks) st.streaks = Array.from({ length: P.streaks }, () => ({ y: r(), ph: r() * TAU, l: 0.3 + r() * 0.6, s: r() }));
-    if (P.rain) st.rain = Array.from({ length: P.rain }, () => ({ x: r() * (W + 200), y: r(), z: r() }));
+    if (P.rain) st.rain = Array.from({ length: Math.round(P.rain * 1.5) }, () => ({ x: r() * (W * 1.6 + 200) - W * 0.3, y: r(), z: r() }));
     if (P.splash) st.splash = Array.from({ length: P.splash }, () => ({ x: r() * W, y: H * (0.6 + r() * 0.4), ph: r() }));
     if (P.glints) st.glints = Array.from({ length: P.glints }, () => ({ x: r() * W, y: H * (0.72 + r() * 0.28), ph: r() * TAU, s: r() }));
-    if (P.embers) st.embers = Array.from({ length: P.embers }, () => ({ x: r() * W, y: r(), s: r(), ph: r() * TAU }));
+    if (P.embers) st.embers = Array.from({ length: Math.round(P.embers * 1.4) }, () => ({ x: (r() * 1.6 - 0.3) * W, y: r(), s: r(), ph: r() * TAU }));
     if (P.bubbles) st.bubbles = Array.from({ length: P.bubbles }, () => ({ x: W * (0.1 + r() * 0.8), y: H * (0.62 + r() * 0.34), ph: r() }));
-    if (P.meteors) st.meteors = Array.from({ length: P.meteors }, () => ({ x: r() * (W + 200), ph: r(), s: r() }));
-    if (P.snow) st.snow = Array.from({ length: P.snow }, () => ({ x: r(), y: r() * H, s: r() }));
+    if (P.meteors) st.meteors = Array.from({ length: Math.round(P.meteors * 1.4) }, () => ({ x: r() * (W * 1.6 + 200) - W * 0.3, ph: r(), s: r() }));
+    if (P.snow) st.snow = Array.from({ length: Math.round(P.snow * 1.5) }, () => ({ x: r(), y: (r() * 1.4 - 0.2) * H, s: r() }));
     if (P.debris) st.debris = Array.from({ length: 40 }, () => ({ a: -Math.PI * (0.1 + r() * 0.8), v: 40 + r() * 120, s: r(), coin: r() < 0.35 }));
     return st;
   }
@@ -256,7 +263,7 @@ void main(){
     c.globalCompositeOperation = "lighter";
     if (P.fog) { // ползущий туман
       const [rgb, y, a] = P.fog;
-      for (let k = 0; k < 7; k++) { const x = ((k * 140 + t * (6 + k)) % (W + 300)) - 150; c.globalAlpha = a; c.drawImage(tintSmoke(rgb), x - 120, H * y - 80 + Math.sin(t * 0.2 + k) * 20, 320, 180); }
+      for (let k = 0; k < 10; k++) { const x = ((k * 140 + t * (6 + k)) % (W * 1.6 + 300)) - 150 - W * 0.3; c.globalAlpha = a; c.drawImage(tintSmoke(rgb), x - 120, H * y - 80 + Math.sin(t * 0.2 + k) * 20, 320, 180); }
       c.globalAlpha = 1;
     }
     if (st.ash) for (const p of st.ash) { const y = ((p.y - t * (3 + p.s * 5)) % H + H) % H; glow(c, p.x + Math.sin(t * 0.3 + p.ph) * 14, y, 2 + p.s * 3, sc.tint, 0.35); }
@@ -323,7 +330,7 @@ void main(){
         c.strokeStyle = "rgba(255,220,180,0.9)"; c.lineWidth = 1.6; c.beginPath(); c.moveTo(x, y); c.lineTo(x - Math.cos(ang) * 22, y - Math.sin(ang) * 22); c.stroke(); glow(c, x, y, 5, "255,200,150", 0.7); }
       else if (ph < 0.45) glow(c, W * (dir > 0 ? 0.55 : 0.38), H * 0.21, 20, "255,80,60", (0.45 - ph) * 8);
     }
-    if (st.snow) { c.strokeStyle = "rgba(225,240,255,0.35)"; c.lineWidth = 1; c.beginPath(); const gust = 0.6 + 0.4 * Math.sin(t * 0.55); for (const s of st.snow) { const x = ((s.x + t * 0.04 * (0.5 + s.s) * (0.5 + gust)) % 1) * (W + 60) - 30, y = s.y + Math.sin(t * 0.8 + s.s * 20) * 10; c.moveTo(x, y); c.lineTo(x + 3 + s.s * 10 * gust, y + 0.6); } c.stroke();
+    if (st.snow) { c.strokeStyle = "rgba(225,240,255,0.35)"; c.lineWidth = 1; c.beginPath(); const gust = 0.6 + 0.4 * Math.sin(t * 0.55); for (const s of st.snow) { const x = ((s.x + t * 0.04 * (0.5 + s.s) * (0.5 + gust)) % 1) * W * 1.7 - W * 0.35, y = s.y + Math.sin(t * 0.8 + s.s * 20) * 10; c.moveTo(x, y); c.lineTo(x + 3 + s.s * 10 * gust, y + 0.6); } c.stroke();
       for (const s of st.snow) if (s.s > 0.85) { const x = ((s.x + t * 0.03) % 1) * W, y = s.y; glow(c, x, y, 3, "230,245,255", 0.5); } }
     if (P.breath) for (const [bx, by] of P.breath) for (let k = 0; k < 3; k++) { const p = (t * 0.25 + k / 3 + bx) % 1; c.globalCompositeOperation = "source-over"; c.globalAlpha = 0.22 * Math.sin(p * Math.PI); c.drawImage(tintSmoke("200,225,240"), bx * W - 30 - p * 20 + (bx - 0.5) * p * 120, by * H + p * 30 - 30, 60 + p * 90, 50 + p * 60); c.globalAlpha = 1; c.globalCompositeOperation = "lighter"; }
     c.globalCompositeOperation = "source-over"; c.globalAlpha = 1;
@@ -358,19 +365,22 @@ void main(){
   const IM = {}; let DPR = 1, CW = 0, CH = 0, panels = [], mode = String(cfg.screen), ready = false, glOK = false;
   const states = SCENES.map((s, i) => initParts(s, rngf(100 + i)));
 
-  function archPath(c, i) {
-    const x0 = GAP + i * (WIN_W + GAP), w = WIN_W, r = ARCH_R, ys = TOP + ARCH_H;
-    c.beginPath(); c.moveTo(x0, TOP + WIN_H);
-    for (let k = 0; k <= 40; k++) { const x = x0 + (k / 40) * w / 2; c.lineTo(x, ys - Math.sqrt(Math.max(0, r * r - (x - (x0 + r)) ** 2))); }
-    for (let k = 0; k <= 40; k++) { const x = x0 + w / 2 + (k / 40) * w / 2; c.lineTo(x, ys - Math.sqrt(Math.max(0, r * r - (x - (x0 + w - r)) ** 2))); }
-    c.lineTo(x0 + w, TOP + WIN_H); c.closePath();
+  function archPath(c, win) {
+    const { x, y, w, h, ha } = win;
+    c.beginPath(); c.moveTo(x, y + h);
+    for (let k = 0; k <= 80; k++) { const sx = k / 80, q = Math.min(sx, 1 - sx); const pr = Math.sqrt(Math.max(0.3844 - (q - 0.62) ** 2, 0)) / 0.6083; c.lineTo(x + sx * w, y + ha * (1 - pr)); }
+    c.lineTo(x + w, y + h); c.closePath();
   }
   function layout() {
     DPR = Math.min(2, window.devicePixelRatio || 1); CW = window.innerWidth; CH = window.innerHeight;
     for (const cv of [glc, fxc]) { cv.width = Math.round(CW * DPR); cv.height = Math.round(CH * DPR); cv.style.width = CW + "px"; cv.style.height = CH + "px"; }
     panels = [];
     const wide = mode === "all" || (mode === "auto" && CW / CH > 4), n = wide ? 3 : 1, pw = CW / n;
-    for (let g = 0; g < n; g++) { const s = Math.min(pw / 1920, CH / 1080); panels.push({ ox: g * pw + (pw - 1920 * s) / 2, oy: (CH - 1080 * s) / 2, s, group: wide ? g : mode === "auto" ? -1 : clamp((+mode || 1) - 1, 0, 2) }); }
+    for (let g = 0; g < n; g++) {
+      const lname = pw / CH < 0.9 ? "port" : "land", L = LAYOUTS[lname], [lw, lh] = L.size;
+      const s = Math.min(pw / lw, CH / lh);
+      panels.push({ L, lname, ox: g * pw + (pw - lw * s) / 2, oy: (CH - lh * s) / 2, s, group: wide ? g : mode === "auto" ? -1 : clamp((+mode || 1) - 1, 0, 2) });
+    }
   }
   function clock() {
     const now = cfg.t !== undefined ? +cfg.t + performance.now() / 1000 : Date.now() / 1000;
@@ -382,19 +392,20 @@ void main(){
     for (const w of words) { const test = line ? line + " " + w : w; if (c.measureText(test).width > maxW && line) { lines.push(line); line = w; } else line = test; }
     lines.push(line); lines.forEach((l, k) => c.fillText(l, x, y + (k - (lines.length - 1) / 2) * lh));
   }
-  function stars(c, o, t, i) {
+  function stars(c, o, t, i, W, H, big) {
     const a = smooth(clamp(o * 4, 0, 1)) * smooth(clamp((1 - o) * 3, 0, 1));
     c.save(); c.globalAlpha = a;
-    const g = c.createLinearGradient(0, 0, 0, WIN_H); g.addColorStop(0, "#02040c"); g.addColorStop(1, "#0c1632"); c.fillStyle = g; c.fillRect(0, 0, WIN_W, WIN_H);
+    const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, "#02040c"); g.addColorStop(1, "#0c1632"); c.fillStyle = g; c.fillRect(0, 0, W, H);
     const r = rngf(9 + i);
-    for (let k = 0; k < 300; k++) { const x = r() * WIN_W, y = r() * WIN_H, s = r() * r() * 2.4 + 0.4; c.fillStyle = `rgba(255,250,235,${0.4 + 0.6 * r() * (0.6 + 0.4 * Math.sin(t * 2 + k))})`; c.fillRect(x, y, s, s); }
-    if (i === 1) {
+    for (let k = 0; k < 300 * (W * H) / (608 * 880); k++) { const x = r() * W, y = r() * H, s = r() * r() * 2.4 + 0.4; c.fillStyle = `rgba(255,250,235,${0.4 + 0.6 * r() * (0.6 + 0.4 * Math.sin(t * 2 + k))})`; c.fillRect(x, y, s, s); }
+    if (big) {
+      const cy = H * 0.37;
       c.globalCompositeOperation = "lighter";
-      for (const [sx, sy] of [[-40, -70], [12, 34], [-64, -6], [44, -22]]) glow(c, WIN_W / 2 + sx, 330 + sy, 28, "255,252,235", a);
+      for (const [sx, sy] of [[-40, -70], [12, 34], [-64, -6], [44, -22]]) glow(c, W / 2 + sx, cy + sy, 28, "255,252,235", a);
       c.globalCompositeOperation = "source-over";
       c.textAlign = "center"; c.fillStyle = "rgba(240,240,255,0.95)"; c.font = "italic 32px 'Cormorant Garamond', Georgia, serif";
-      c.fillText("e quindi uscimmo", WIN_W / 2, 560); c.fillText("a riveder le stelle", WIN_W / 2, 600);
-      c.fillStyle = "rgba(200,210,235,0.85)"; c.font = "18px 'Cormorant Garamond', Georgia, serif"; c.fillText("И здесь мы вышли вновь узреть светила.", WIN_W / 2, 644);
+      c.fillText("e quindi uscimmo", W / 2, cy + 230); c.fillText("a riveder le stelle", W / 2, cy + 270);
+      c.fillStyle = "rgba(200,210,235,0.85)"; c.font = "18px 'Cormorant Garamond', Georgia, serif"; c.fillText("И здесь мы вышли вновь узреть светила.", W / 2, cy + 314);
     }
     c.restore();
   }
@@ -413,41 +424,47 @@ void main(){
     if (glOK) { gl.viewport(0, 0, glc.width, glc.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, fxc.width, fxc.height);
     for (const P of panels) {
-      const group = P.group >= 0 ? P.group : Math.floor(ci / 3);
+      const group = P.group >= 0 ? P.group : Math.floor(ci / 3), L = P.L;
       for (let i = 0; i < 3; i++) {
         const idx = group * 3 + i, sc = SCENES[idx], st = states[idx], active = idx === ci && outro < 0;
-        const x0 = GAP + i * (WIN_W + GAP);
-        const k = DPR * P.s, rect = [Math.round((P.ox + x0 * P.s) * DPR), Math.round((P.oy + TOP * P.s) * DPR), Math.round(WIN_W * k), Math.round(WIN_H * k)];
-        if (glOK) drawGLWindow(idx, rect, t + idx * 37, active ? 1.0 : 0.88, st.flash || 0);
+        const win = L.wins[i], W = win.w, H = win.h, k = DPR * P.s;
+        const rect = [Math.round((P.ox + win.x * P.s) * DPR), Math.round((P.oy + win.y * P.s) * DPR), Math.round(W * k), Math.round(H * k)];
+        if (glOK) drawGLWindow(idx, rect, t + idx * 37, active ? 1.0 : 0.88, st.flash || 0, win);
         ctx.setTransform(k, 0, 0, k, P.ox * DPR, P.oy * DPR);
-        ctx.save(); archPath(ctx, i); ctx.clip(); ctx.translate(x0, TOP);
-        if (!glOK && IM["plate_" + (idx + 1)]) ctx.drawImage(IM["plate_" + (idx + 1)], 0, 0, WIN_W, WIN_H);
+        ctx.save(); archPath(ctx, win); ctx.clip(); ctx.translate(win.x, win.y);
+        const vr = viewRect(idx, W, H), sr = ART[idx + 1].win;
+        if (!glOK && IM["art_" + (idx + 1)]) { const im = IM["art_" + (idx + 1)]; ctx.drawImage(im, vr[0] * im.width, vr[1] * im.height, vr[2] * im.width, vr[3] * im.height, 0, 0, W, H); }
+        // частицы размечены в «стандартном» окне 608x880 — пересчитываем в это окно
+        ctx.save();
+        const sx = (sr[2] / vr[2]) * W / WIN_W, sy = (sr[3] / vr[3]) * H / WIN_H;
+        ctx.transform(sx, 0, 0, sy, (sr[0] - vr[0]) / vr[2] * W, (sr[1] - vr[1]) / vr[3] * H);
         drawParts(ctx, sc, st, t + idx * 37, idx);
+        ctx.restore();
         if (active && cfg.poets) {
-          const x = -40 + prog * (WIN_W + 80), ph = t * 4.2, y = WIN_H - 26;
+          const x = -40 + prog * (W + 80), ph = t * 4.2, y = H - 26;
           poet(ctx, x, y, 72, ph, "virgil"); poet(ctx, x - 32, y, 72, ph + 1.4, "dante");
         }
         if (active && cfg.quotes) {
           const a = smooth(clamp(prog * 7, 0, 1)) * smooth(clamp((1 - prog) * 7, 0, 1));
           if (a > 0) {
             ctx.save(); ctx.globalAlpha = a; ctx.textAlign = "center";
-            const g = ctx.createLinearGradient(0, WIN_H - 190, 0, WIN_H - 70); g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(0.5, "rgba(0,0,0,0.5)"); g.addColorStop(1, "rgba(0,0,0,0)");
-            ctx.fillStyle = g; ctx.fillRect(0, WIN_H - 190, WIN_W, 120);
+            const g = ctx.createLinearGradient(0, H - 190, 0, H - 70); g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(0.5, "rgba(0,0,0,0.5)"); g.addColorStop(1, "rgba(0,0,0,0)");
+            ctx.fillStyle = g; ctx.fillRect(0, H - 190, W, 120);
             ctx.shadowColor = "rgba(0,0,0,1)"; ctx.shadowBlur = 10;
-            ctx.fillStyle = "rgba(255,244,228,0.96)"; ctx.font = "italic 25px 'Cormorant Garamond', Georgia, serif"; wrap(ctx, "«" + sc.q + "»", WIN_W / 2, WIN_H - 142, 520, 28);
-            ctx.fillStyle = "rgba(232,216,202,0.9)"; ctx.font = "17px 'Cormorant Garamond', Georgia, serif"; ctx.fillText(sc.qru, WIN_W / 2, WIN_H - 98);
+            ctx.fillStyle = "rgba(255,244,228,0.96)"; ctx.font = "italic 25px 'Cormorant Garamond', Georgia, serif"; wrap(ctx, "«" + sc.q + "»", W / 2, H - 142, W - 80, 28);
+            ctx.fillStyle = "rgba(232,216,202,0.9)"; ctx.font = "17px 'Cormorant Garamond', Georgia, serif"; wrap(ctx, sc.qru, W / 2, H - 98, W - 60, 20);
             ctx.restore();
           }
         }
-        if (outro >= 0) stars(ctx, outro, t, i);
+        if (outro >= 0) stars(ctx, outro, t, i, W, H, i === L.outro);
         ctx.restore();
       }
       ctx.setTransform(DPR * P.s, 0, 0, DPR * P.s, DPR * P.ox, DPR * P.oy);
-      const fr = IM["frame_" + (group + 1)]; if (fr) ctx.drawImage(fr, 0, 0, 1920, 1080);
+      const fr = IM["frame_" + P.lname + "_" + (group + 1)]; if (fr) ctx.drawImage(fr, 0, 0, L.size[0], L.size[1]);
       if (outro < 0 && Math.floor(ci / 3) === group) {
-        const i = ci % 3, cx = GAP + i * (WIN_W + GAP) + WIN_W / 2;
-        ctx.globalCompositeOperation = "lighter"; glow(ctx, cx, 975, 150, "255,180,100", 0.2 + 0.06 * Math.sin(t * 2)); ctx.globalCompositeOperation = "source-over";
-        ctx.strokeStyle = "rgba(255,200,120,0.6)"; ctx.lineWidth = 1.6; ctx.save(); archPath(ctx, i); ctx.stroke(); ctx.restore();
+        const i = ci % 3, pl = L.plaques[i];
+        ctx.globalCompositeOperation = "lighter"; glow(ctx, pl.cx, pl.y + pl.h * 0.4, 150, "255,180,100", 0.2 + 0.06 * Math.sin(t * 2)); ctx.globalCompositeOperation = "source-over";
+        ctx.strokeStyle = "rgba(255,200,120,0.6)"; ctx.lineWidth = 1.6; ctx.save(); archPath(ctx, L.wins[i]); ctx.stroke(); ctx.restore();
       }
     }
   }
@@ -465,9 +482,10 @@ void main(){
   makeSmoke();
   window.addEventListener("resize", layout);
   layout();
-  const names = []; for (let i = 1; i <= 9; i++) names.push("plate_" + i); names.push("frame_1", "frame_2", "frame_3");
+  const names = []; for (let i = 1; i <= 9; i++) names.push("art_" + i);
+  for (const ln of ["land", "port"]) for (let g = 1; g <= 3; g++) names.push(`frame_${ln}_${g}`);
   Promise.all(names.map((n) => new Promise((res) => { const im = new Image(); im.onload = () => { IM[n] = im; res(); }; im.onerror = () => res(); im.src = (window.INFERNO_DATA && window.INFERNO_DATA[n]) || BASE + n + ".webp"; }))).then(() => {
-    try { glOK = initGL(); if (glOK) for (let i = 1; i <= 9; i++) textures[i - 1] = uploadTex(IM["plate_" + i]); }
+    try { glOK = initGL(); if (glOK) for (let i = 1; i <= 9; i++) textures[i - 1] = uploadTex(IM["art_" + i]); }
     catch (e) { console.warn("WebGL недоступен, рисую без эффектов искажения", e); glOK = false; }
     ready = true;
   });

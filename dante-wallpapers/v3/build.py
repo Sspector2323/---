@@ -4,7 +4,7 @@ import json, os, shutil
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT, DIST = os.path.join(HERE, "out"), os.path.join(HERE, "dist")
 engine = open(os.path.join(HERE, "engine/inferno3.js"), encoding="utf-8").read()
-ASSETS = [f"plate_{i}.webp" for i in range(1, 10)] + ["frame_1.webp", "frame_2.webp", "frame_3.webp"]
+ASSETS = [f"art_{i}.webp" for i in range(1, 10)] + [f"frame_{l}_{g}.webp" for l in ("land", "port") for g in (1, 2, 3)]
 TPL = """<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Inferno — {title}</title>
@@ -27,7 +27,8 @@ for folder, screen, desc in VARIANTS:
     d = os.path.join(DIST, folder); os.makedirs(os.path.join(d, "assets"))
     import base64
     data = {a[:-5]: "data:image/webp;base64," + base64.b64encode(open(os.path.join(OUT, a), "rb").read()).decode() for a in ASSETS}
-    open(os.path.join(d, "assets", "data.js"), "w").write("window.INFERNO_DATA=" + json.dumps(data) + ";")
+    extra = "window.INFERNO_LAYOUTS=" + open(os.path.join(OUT, "layouts.json")).read() + ";window.INFERNO_ART=" + open(os.path.join(OUT, "art_spec.json")).read() + ";"
+    open(os.path.join(d, "assets", "data.js"), "w").write(extra + "window.INFERNO_DATA=" + json.dumps(data) + ";")
     open(os.path.join(d, "index.html"), "w", encoding="utf-8").write(TPL.format(title=desc, config=json.dumps({"screen": screen, "cycle": 540, "fps": 30}), engine=engine))
     json.dump({"AppVersion": "2.0.0.0", "Title": f"Inferno — {desc}", "Desc": "Девять кругов Ада Данте: живые картины в готическом триптихе. Полный спуск — 9 минут, мониторы синхронны.",
                "Author": "Dante wallpapers", "License": "", "Contact": "", "Type": 1, "FileName": "index.html", "Arguments": None, "IsAbsolutePath": False},
