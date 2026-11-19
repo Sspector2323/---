@@ -25,11 +25,18 @@ except ImportError:  # библиотека не установлена — пр
     TelegramClient = None
 
 
+def _env(name: str) -> str:
+    """Значение из Railway без пробелов и кавычек (их часто копируют вместе со значением)."""
+    return os.getenv(name, "").strip().strip('"').strip("'").strip()
+
+
 class Userbot:
     def __init__(self):
-        self.api_id = int(os.getenv("USERBOT_API_ID", "0") or 0)
-        self.api_hash = os.getenv("USERBOT_API_HASH", "").strip()
-        self.session = os.getenv("USERBOT_SESSION", "").strip()
+        raw_id = _env("USERBOT_API_ID")
+        self.api_id = int(raw_id) if raw_id.isdigit() else 0
+        self.api_id_bad = bool(raw_id) and not raw_id.isdigit()
+        self.api_hash = _env("USERBOT_API_HASH")
+        self.session = _env("USERBOT_SESSION")
         self.client = None
         self.me = None
         self.error = ""
@@ -169,7 +176,8 @@ SETUP_HELP = (
     "(название любое, платформа Other).\n"
     "2. Скопируй <b>App api_id</b> и <b>App api_hash</b> в Railway → Variables: "
     "<code>USERBOT_API_ID</code> и <code>USERBOT_API_HASH</code>.\n"
-    "3. После перезапуска снова напиши /userbot и войди в аккаунт."
+    "Если ключи уже есть (например, от другого приложения) — можно взять их.\n"
+    "3. После перезапуска снова напиши /userbot — появится кнопка «🔐 Войти». Номер телефона присылай только после неё."
 )
 
 
@@ -202,10 +210,25 @@ def setup_userbot_router(userbot: Userbot, admin_ids: set[int], reposter=None, c
         return ("\n\n<b>Группы пересылки «как есть»:</b>\n" + "\n".join(lines)) if lines else \
             "\n\nГрупп в пересылках пока нет — выбери их в /reposts."
 
+    def diagnose() -> str:
+        """Чего именно не хватает — чтобы было понятно, что поправить в Railway."""
+        lines = ["\n\n<b>Что видит бот сейчас:</b>"]
+        if TelegramClient is None:
+            lines.append("❌ библиотека Telethon не установлена (бот не пересобрался после обновления?)")
+        if userbot.api_id:
+            lines.append("✅ USERBOT_API_ID")
+        elif userbot.api_id_bad:
+            lines.append("❌ USERBOT_API_ID — должно быть только число, без букв и пробелов")
+        else:
+            lines.append("❌ USERBOT_API_ID — не задана (проверь название переменной)")
+        lines.append("✅ USERBOT_API_HASH" if userbot.api_hash else "❌ USERBOT_API_HASH — не задана (проверь название переменной)")
+        lines.append("\nПосле изменения переменных Railway перезапускает бота — подожди минуту и снова напиши /userbot.")
+        return "\n".join(lines)
+
     @router.message(is_admin, Command("userbot"))
     async def status(message: Message):
         if not userbot.configured:
-            await message.answer(SETUP_HELP, parse_mode="HTML")
+            await message.answer(SETUP_HELP + diagnose(), parse_mode="HTML")
             return
         if userbot.ready:
             me = userbot.me
@@ -225,7 +248,7 @@ def setup_userbot_router(userbot: Userbot, admin_ids: set[int], reposter=None, c
     @router.callback_query(F.data == "ub:login", F.from_user.id.func(lambda uid: uid in admin_ids))
     async def login(cb: CallbackQuery):
         if not userbot.configured:
-            await cb.message.answer(SETUP_HELP, parse_mode="HTML")
+            await cb.message.answer(SETUP_HELP + diagnose(), parse_mode="HTML")
             await cb.answer()
             return
         userbot.begin_login(cb.from_user.id)
