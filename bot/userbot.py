@@ -138,6 +138,31 @@ class Userbot:
         st["hash"] = sent.phone_code_hash
         return describe_code(sent)
 
+    # ---------- вход по QR-коду (без кода из Telegram) ----------
+    async def qr_start(self, admin_id: int):
+        self.cancel_login(admin_id)
+        client = self._new_client()
+        await client.connect()
+        qr = await client.qr_login()
+        self._login[admin_id] = {"step": "qr", "client": client, "qr": qr}
+        return qr
+
+    async def qr_wait(self, admin_id: int, timeout: float) -> str:
+        """'ok' — вошли, 'password' — нужен пароль 2FA, 'refresh' — QR устарел (новый уже создан), 'gone' — вход отменён."""
+        st = self._login.get(admin_id) or {}
+        qr = st.get("qr")
+        if st.get("step") != "qr" or not qr:
+            return "gone"
+        try:
+            await qr.wait(timeout=timeout)
+        except asyncio.TimeoutError:
+            await qr.recreate()
+            return "refresh"
+        except errors.SessionPasswordNeededError:
+            st["step"] = "password"
+            return "password"
+        return await self._finish(admin_id)
+
     async def send_code(self, admin_id: int, code: str) -> str:
         """Возвращает 'ok', 'password' (нужен пароль 2FA) или текст ошибки."""
         st = self._login.get(admin_id) or {}
@@ -204,7 +229,29 @@ class Userbot:
 # ---------- админка в личке бота ----------
 from aiogram import Bot, F, Router  # noqa: E402
 from aiogram.filters import Command  # noqa: E402
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message  # noqa: E402
+from aiogram.types import (  # noqa: E402
+    BufferedInputFile,
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    Message,
+)
+
+
+def qr_png(url: str) -> bytes:
+    import io
+    import qrcode
+    img = qrcode.make(url, box_size=10, border=3)
+    out = io.BytesIO()
+    img.save(out, "PNG")
+    return out.getvalue()
+
+
+QR_HELP = ("📷 <b>Вход по QR-коду</b>\n\n"
+           "На телефоне, где открыт аккаунт-публикатор: <b>Настройки → Устройства → Подключить устройство</b> "
+           "(Settings → Devices → Link Desktop Device) и наведи камеру на этот QR.\n"
+           "Код обновляется каждые ~30 секунд — просто сканируй тот, что на экране.")
 
 SETUP_HELP = (
     "🕶 <b>Аккаунт-публикатор</b> — чтобы посты в группах шли от имени группы, а не бота.\n\n"
@@ -287,10 +334,71 @@ def setup_userbot_router(userbot: Userbot, admin_ids: set[int], reposter=None, c
             await cb.message.answer(SETUP_HELP + diagnose(), parse_mode="HTML")
             await cb.answer()
             return
+        await cb.answer()
+        await cb.message.answer(
+            "Как войти в аккаунт-публикатор?\n\n📷 <b>По QR-коду</b> — проще всего: сканируешь с телефона, где открыт "
+            "этот аккаунт, код вводить не нужно.\n📱 <b>По номеру</b> — Telegram пришлёт код.",
+            parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📷 Войти по QR-коду", callback_data="ub:qr", style="primary")],
+                [InlineKeyboardButton(text="📱 По номеру телефона", callback_data="ub:phone")]]))
+
+    @router.callback_query(F.data == "ub:phone", F.from_user.id.func(lambda uid: uid in admin_ids))
+    async def login_phone(cb: CallbackQuery):
         userbot.begin_login(cb.from_user.id)
         await cb.answer()
         await cb.message.answer("📱 Пришли номер телефона аккаунта, например <code>+79991234567</code>.\n"
                                 "Отмена — /cancel", parse_mode="HTML")
+
+    @router.callback_query(F.data == "ub:qr", F.from_user.id.func(lambda uid: uid in admin_ids))
+    async def login_qr(cb: CallbackQuery, bot: Bot):
+        uid = cb.from_user.id
+        await cb.answer()
+        try:
+            qr = await userbot.qr_start(uid)
+        except Exception as e:
+            await cb.message.answer(f"⚠️ Не получилось начать вход: {e}")
+            return
+        cancel = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✖️ Отмена", callback_data="ub:cancel")]])
+        photo = await cb.message.answer_photo(BufferedInputFile(qr_png(qr.url), "qr.png"), caption=QR_HELP,
+                                              parse_mode="HTML", reply_markup=cancel)
+        asyncio.create_task(_qr_loop(bot, uid, photo, cancel))
+
+    async def _qr_loop(bot: Bot, uid: int, photo: Message, cancel) -> None:
+        for _ in range(10):  # ~5 минут
+            try:
+                res = await userbot.qr_wait(uid, 28)
+            except Exception as e:
+                if userbot.login_step(uid) != "qr":  # нажали «Отмена»
+                    return
+                log.exception("QR-вход")
+                userbot.cancel_login(uid)
+                await bot.send_message(uid, f"⚠️ Вход по QR не удался: {e}\nПопробуй ещё раз: /userbot")
+                return
+            if res == "gone":
+                return
+            if res == "refresh":
+                qr = (userbot._login.get(uid) or {}).get("qr")
+                try:
+                    await bot.edit_message_media(
+                        InputMediaPhoto(media=BufferedInputFile(qr_png(qr.url), "qr.png"), caption=QR_HELP,
+                                        parse_mode="HTML"),
+                        chat_id=photo.chat.id, message_id=photo.message_id, reply_markup=cancel)
+                except Exception:
+                    pass
+                continue
+            try:
+                await bot.delete_message(photo.chat.id, photo.message_id)
+            except Exception:
+                pass
+            if res == "password":
+                await bot.send_message(uid, "🔑 QR отсканирован! На аккаунте включена двухэтапная проверка — "
+                                            "пришли пароль от неё (сообщение сразу удалю).")
+            elif res == "ok":
+                await done(bot, uid)
+            return
+        userbot.cancel_login(uid)
+        await _delete(photo)
+        await bot.send_message(uid, "⏱ QR-код так и не отсканировали — начни заново: /userbot")
 
     def resend_kb() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(inline_keyboard=[[
@@ -321,8 +429,8 @@ def setup_userbot_router(userbot: Userbot, admin_ids: set[int], reposter=None, c
         await cb.answer("Отменено")
         await cb.message.answer("Вход отменён. Начать заново: /userbot")
 
-    def in_login(message: Message) -> bool:
-        return bool(userbot.login_step(message.from_user.id)) and bool(message.text)
+    def in_login(message: Message) -> bool:  # ждём номер, код или пароль (QR — без текста)
+        return userbot.login_step(message.from_user.id) in {"phone", "code", "password"} and bool(message.text)
 
     @router.message(is_admin, Command("cancel"), in_login)
     async def cancel(message: Message):
@@ -353,17 +461,21 @@ def setup_userbot_router(userbot: Userbot, admin_ids: set[int], reposter=None, c
             await message.answer("🔑 На аккаунте включена двухэтапная проверка — пришли пароль от неё "
                                  "(сообщение сразу удалю).")
         elif res == "ok":
-            me = userbot.me
-            sent = await message.answer(
-                f"✅ Аккаунт подключён: <b>{me.first_name}</b>. Пересылки в группы уже идут через этот аккаунт.\n\n"
-                "Чтобы вход пережил перезапуски, скопируй строку ниже в Railway → Variables → "
-                "<code>USERBOT_SESSION</code>. Это ключ от аккаунта — никому не показывай. "
-                "Сообщение удалю через 10 минут.\n\n"
-                f"<tg-spoiler><code>{userbot.session}</code></tg-spoiler>", parse_mode="HTML")
-            asyncio.create_task(_delete_later(sent, 600))
-            await message.answer("🧪 Проверка" + (await group_report() or ": групп нет"), parse_mode="HTML")
+            await done(bot, uid)
         else:
             await message.answer("⚠️ " + res)
+
+    async def done(bot: Bot, uid: int) -> None:
+        me = userbot.me
+        sent = await bot.send_message(
+            uid,
+            f"✅ Аккаунт подключён: <b>{me.first_name}</b>. Пересылки в группы уже идут через этот аккаунт.\n\n"
+            "Чтобы вход пережил перезапуски, скопируй строку ниже в Railway → Variables → "
+            "<code>USERBOT_SESSION</code>. Это ключ от аккаунта — никому не показывай. "
+            "Сообщение удалю через 10 минут.\n\n"
+            f"<tg-spoiler><code>{userbot.session}</code></tg-spoiler>", parse_mode="HTML")
+        asyncio.create_task(_delete_later(sent, 600))
+        await bot.send_message(uid, "🧪 Проверка" + (await group_report() or ": групп нет"), parse_mode="HTML")
 
     return router
 
