@@ -55,6 +55,14 @@ def describe_code(sent) -> str:
     return where
 
 
+async def _disconnect(client) -> None:
+    """Telethon.disconnect() иногда возвращает Future, а не корутину — оборачиваем."""
+    try:
+        await client.disconnect()
+    except Exception:
+        pass
+
+
 class Userbot:
     def __init__(self):
         raw_id = _env("USERBOT_API_ID")
@@ -113,7 +121,7 @@ class Userbot:
     def cancel_login(self, admin_id: int) -> None:
         st = self._login.pop(admin_id, None)
         if st and st.get("client"):
-            asyncio.create_task(st["client"].disconnect())
+            asyncio.create_task(_disconnect(st["client"]))
 
     def begin_login(self, admin_id: int) -> None:
         self.cancel_login(admin_id)
