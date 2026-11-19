@@ -16,6 +16,7 @@ from .ai import AIResponder
 from .config import load_config
 from .handlers import setup_chat_router, setup_router
 from .mirrors import Mirrors
+from .userbot import Userbot, setup_userbot_router
 from .music.service import MusicService, oauth_handler, privacy_handler, setup_music_router
 from .chats import ChatRegistry
 from .repost import RepostHub, Reposter
@@ -40,6 +41,7 @@ ADMIN_COMMANDS = [
     BotCommand(command="reposts", description="Пересылки между каналами"),
     BotCommand(command="music", description="Музыкальная группа: состояние"),
     BotCommand(command="gdrive", description="Подключить Google Диск для музыки"),
+    BotCommand(command="userbot", description="Аккаунт-публикатор (посты в группы анонимно)"),
     BotCommand(command="myid", description="Мой Telegram ID"),
     BotCommand(command="usermode", description="Режим обычного пользователя вкл/выкл"),
 ]
@@ -77,9 +79,13 @@ async def main() -> None:
     await feed.load()
     mirrors = Mirrors(settings, cfg.mirrors_channel_id, cfg.admin_ids)
     await mirrors.load()
+    userbot = Userbot()  # аккаунт-публикатор: посты в группы от имени группы, а не бота
+    await userbot.start()
+    reposter.set_userbot(userbot)
     music = MusicService(settings, sheet, cfg)
     await music.load()
     log.info("Приветствие: %s", "своё (из таблицы)" if welcome.current else "стандартное")
+    dp.include_router(setup_userbot_router(userbot, cfg.admin_ids, reposter, chats))
     dp.include_router(setup_music_router(music, chats))  # раньше группового роутера: ссылки в музыкальной группе
     dp.include_router(setup_chat_router(chats, cfg.admin_ids, reposter))
     dp.include_router(setup_router(cfg, sheet, ai, reposter, welcome, feed, mirrors, chats))
@@ -131,6 +137,7 @@ async def main() -> None:
     finally:
         mirrors_task.cancel()
         await music.stop()
+        await userbot.stop()
         await runner.cleanup()
 
 
