@@ -30,6 +30,31 @@ def _env(name: str) -> str:
     return os.getenv(name, "").strip().strip('"').strip("'").strip()
 
 
+def describe_code(sent) -> str:
+    """Куда Telegram отправил код входа — человеческими словами."""
+    kind = type(getattr(sent, "type", None)).__name__
+    where = {
+        "SentCodeTypeApp": "в приложение Telegram этого аккаунта — чат «Telegram» с синей галочкой "
+                           "(на любом устройстве, где он открыт; проверь архив и закреп)",
+        "SentCodeTypeSms": "по SMS на этот номер",
+        "SentCodeTypeSmsWord": "по SMS на этот номер",
+        "SentCodeTypeSmsPhrase": "по SMS на этот номер",
+        "SentCodeTypeFirebaseSms": "по SMS на этот номер",
+        "SentCodeTypeFragmentSms": "на fragment.com (номер куплен на Fragment)",
+        "SentCodeTypeCall": "звонком — код продиктуют",
+        "SentCodeTypeFlashCall": "звонком — код это последние цифры входящего номера",
+        "SentCodeTypeMissedCall": "пропущенным звонком — код это последние цифры входящего номера",
+        "SentCodeTypeEmailCode": "на почту для входа в Telegram" + (
+            f" ({sent.type.email_pattern})" if getattr(sent.type, "email_pattern", "") else ""),
+        "SentCodeTypeSetUpEmailRequired": "никуда: Telegram требует сначала привязать почту для входа "
+                                          "(Настройки → Конфиденциальность → Почта для входа) на этом аккаунте",
+    }.get(kind, "в Telegram этого аккаунта")
+    nxt = type(getattr(sent, "next_type", None)).__name__
+    if nxt and nxt != "NoneType":
+        where += ". Если не пришёл — нажми «🔁 Прислать код ещё раз»"
+    return where
+
+
 class Userbot:
     def __init__(self):
         raw_id = _env("USERBOT_API_ID")
@@ -94,13 +119,24 @@ class Userbot:
         self.cancel_login(admin_id)
         self._login[admin_id] = {"step": "phone"}
 
-    async def send_phone(self, admin_id: int, phone: str) -> str:
+    async def send_phone(self, admin_id: int, phone: str) -> tuple[str, str]:
+        """Запросить код. Возвращает (номер, куда Telegram отправил код)."""
         phone = "+" + "".join(ch for ch in phone if ch.isdigit())
         client = self._new_client()
         await client.connect()
         sent = await client.send_code_request(phone)
         self._login[admin_id] = {"step": "code", "client": client, "phone": phone, "hash": sent.phone_code_hash}
-        return phone
+        return phone, describe_code(sent)
+
+    async def resend(self, admin_id: int) -> str:
+        """Отправить код другим способом (обычно SMS). Возвращает, куда он ушёл."""
+        from telethon.tl.functions.auth import ResendCodeRequest
+        st = self._login.get(admin_id) or {}
+        if st.get("step") != "code":
+            raise RuntimeError("вход не начат — /userbot")
+        sent = await st["client"](ResendCodeRequest(st["phone"], st["hash"]))
+        st["hash"] = sent.phone_code_hash
+        return describe_code(sent)
 
     async def send_code(self, admin_id: int, code: str) -> str:
         """Возвращает 'ok', 'password' (нужен пароль 2FA) или текст ошибки."""
@@ -256,6 +292,35 @@ def setup_userbot_router(userbot: Userbot, admin_ids: set[int], reposter=None, c
         await cb.message.answer("📱 Пришли номер телефона аккаунта, например <code>+79991234567</code>.\n"
                                 "Отмена — /cancel", parse_mode="HTML")
 
+    def resend_kb() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔁 Прислать код ещё раз", callback_data="ub:resend"),
+            InlineKeyboardButton(text="✖️ Отмена", callback_data="ub:cancel")]])
+
+    def code_prompt(phone: str, where: str) -> str:
+        return (f"✉️ Код для {phone} отправлен {where}.\n\n"
+                "Пришли его <b>цифрами через пробел</b>, например <code>1 2 3 4 5</code> — "
+                "иначе Telegram посчитает, что код кому-то переслали, и отменит его.")
+
+    @router.callback_query(F.data == "ub:resend", F.from_user.id.func(lambda uid: uid in admin_ids))
+    async def resend(cb: CallbackQuery):
+        try:
+            where = await userbot.resend(cb.from_user.id)
+        except Exception as e:
+            await cb.answer()
+            await cb.message.answer(f"⚠️ Не получилось отправить код ещё раз: {e}\n"
+                                    "Если Telegram просит подождать — подожди указанное время и начни с /userbot.")
+            return
+        await cb.answer("Отправлено")
+        st = userbot._login.get(cb.from_user.id) or {}
+        await cb.message.answer(code_prompt(st.get("phone", ""), where), parse_mode="HTML", reply_markup=resend_kb())
+
+    @router.callback_query(F.data == "ub:cancel", F.from_user.id.func(lambda uid: uid in admin_ids))
+    async def cancel_cb(cb: CallbackQuery):
+        userbot.cancel_login(cb.from_user.id)
+        await cb.answer("Отменено")
+        await cb.message.answer("Вход отменён. Начать заново: /userbot")
+
     def in_login(message: Message) -> bool:
         return bool(userbot.login_step(message.from_user.id)) and bool(message.text)
 
@@ -270,11 +335,8 @@ def setup_userbot_router(userbot: Userbot, admin_ids: set[int], reposter=None, c
         step = userbot.login_step(uid)
         try:
             if step == "phone":
-                phone = await userbot.send_phone(uid, text)
-                await message.answer(
-                    f"✉️ Telegram отправил код на {phone} (в приложение Telegram этого аккаунта).\n\n"
-                    "Пришли его <b>цифрами через пробел</b>, например <code>1 2 3 4 5</code> — "
-                    "иначе Telegram посчитает, что код кому-то переслали, и отменит его.", parse_mode="HTML")
+                phone, where = await userbot.send_phone(uid, text)
+                await message.answer(code_prompt(phone, where), parse_mode="HTML", reply_markup=resend_kb())
                 return
             if step == "code":
                 await _delete(message)
