@@ -148,6 +148,9 @@ class Reposter:
         self._albums: dict[str, SourcePost] = {}
         self._pending: dict[int, SourcePost] = {}
         self._tasks: set[asyncio.Task] = set()
+        self.userbot = None                 # аккаунт-публикатор: посты в группы от имени группы
+        self._ub_checked: dict[int, tuple[bool, float]] = {}
+        self._ub_warned: dict[int, float] = {}
 
     @property
     def target(self) -> int:
@@ -188,8 +191,38 @@ class Reposter:
             post.messages.sort(key=lambda m: m.message_id)
             await self._handle(post, bot)
 
-    async def _publish(self, bot: Bot, post: SourcePost, target: int, kind: str = "moment") -> None:
+    async def _via_userbot(self, bot: Bot, post: SourcePost, target: int) -> bool:
+        """Отправить пост аккаунтом-публикатором. False — не вышло, тогда шлёт бот."""
+        ub = self.userbot
+        if not ub or not ub.ready or await ub.is_channel(target):
+            return False
+        now = asyncio.get_running_loop().time()
+        ok, at = self._ub_checked.get(target, (False, -1e9))
+        if now - at > 600:
+            ok = await ub.can_post(target)
+            self._ub_checked[target] = (ok, now)
+        reason = "" if ok else "аккаунт-публикатор не админ с «Анонимностью» в этой группе"
+        if ok:
+            try:
+                source = self.source if not self.source.lstrip("-").isdigit() else post.chat_id
+                await ub.forward_copy(target, source, [m.message_id for m in post.messages])
+                return True
+            except Exception as e:
+                log.exception("Аккаунт-публикатор не смог отправить в %s", target)
+                reason = f"аккаунт-публикатор: {e}"
+                self._ub_checked.pop(target, None)
+        if now - self._ub_warned.get(target, -1e9) > 6 * 3600:  # не чаще раза в 6 часов на группу
+            self._ub_warned[target] = now
+            title = await ub.chat_title(target)
+            await self._notify_admins(bot, f"⚠️ «{self.title}» → «{title}»: {reason}. Пост отправил бот от своего имени.\n"
+                                           "Проверить: /userbot")
+        return False
+
+    async def _publish(self, bot: Bot, post: SourcePost, target: int, kind: str = "moment",
+                       preview: bool = False) -> None:
         if self.style == "copy":
+            if not preview and await self._via_userbot(bot, post, target):
+                return
             await publish_copy(bot, post, target)
         else:
             await publish(bot, post, target, kind=kind)
@@ -231,7 +264,7 @@ class Reposter:
         rows.append([InlineKeyboardButton(text="❌ Пропустить", callback_data=f"rp:{job_id}:skip")])
         for admin_id in self.admin_ids:
             try:
-                await self._publish(bot, post, admin_id)  # превью ровно в том виде, как уйдёт в каналы
+                await self._publish(bot, post, admin_id, preview=True)  # превью — как уйдёт в каналы
             except Exception as e:
                 log.warning("Превью для %s не отправилось: %s", admin_id, e)
         await self._notify_admins(bot, f"👆 Новый пост: {self.title}. Публикуем?", InlineKeyboardMarkup(inline_keyboard=rows))
@@ -260,6 +293,11 @@ class RepostHub:
     def __init__(self, routes: list[Reposter], store=None):
         self.routes = routes
         self._store = store
+
+    def set_userbot(self, userbot) -> None:
+        for r in self.routes:
+            if r.style == "copy":  # «как есть» — Профит Хата → группы
+                r.userbot = userbot
 
     def get(self, key: str) -> Reposter | None:
         return next((r for r in self.routes if r.key == key), None)

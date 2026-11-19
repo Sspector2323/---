@@ -7,3 +7,5 @@ deno>=2.5
 imageio-ffmpeg>=0.6
 google-api-python-client>=2.150
 Pillow>=10.4
+# Аккаунт-публикатор (посты в группы от имени группы, а не бота)
+telethon>=1.40
