@@ -140,6 +140,33 @@ def base_opts() -> dict:
     return opts
 
 
+# Если YouTube не отдал файлы одному «клиенту» (только превью, «формат недоступен», 403) — пробуем другие.
+# Каждый пункт: (клиенты YouTube, без cookies?). None — как решит yt-dlp.
+CLIENT_PLANS: list[tuple[list[str] | None, bool]] = [
+    (None, False),
+    (["tv"], False),
+    (["web_safari", "mweb"], False),
+    (["android_vr"], True),   # этот клиент не умеет cookies — пробуем без них
+]
+RETRY_ERRORS = ("requested format is not available", "only images are available", "not a bot", "sign in to confirm",
+                "http error 403", "n challenge", "po token", "drm protected")
+
+
+def plan_opts(plan) -> dict:
+    clients, no_cookies = plan
+    opts = base_opts()
+    if clients:
+        opts["extractor_args"] = {"youtube": {"player_client": clients}}
+    if no_cookies:
+        opts.pop("cookiefile", None)
+    return opts
+
+
+def _retryable(err: Exception) -> bool:
+    low = str(err).lower()
+    return any(m in low for m in RETRY_ERRORS)
+
+
 AUDIO_FORMAT = "ba/b" if os.getenv("MUSIC_AUDIO", "").strip().lower() == "best" else "ba[ext=m4a]/ba/b"
 
 
@@ -150,6 +177,9 @@ def explain(err: Exception) -> str:
     if "not a bot" in low or "sign in to confirm" in low or "403" in low or "cookies" in low:
         return ("YouTube не пускает сервер бота (просит войти). Админу: обновить YOUTUBE_COOKIES "
                 "или задать YOUTUBE_PROXY — инструкция в README.")
+    if "requested format is not available" in low or "only images are available" in low:
+        return ("YouTube не отдал файлы этого видео (перепробовал несколько способов). Обычно это значит, что "
+                "YOUTUBE_COOKIES устарели — обнови их по инструкции в README и нажми «Попробовать снова».")
     if "private" in low:
         return "Видео закрытое — бот его не видит."
     if "age" in low and "confirm" in low:
@@ -199,8 +229,15 @@ class Track:
         return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
+_VIDEO_ID = re.compile(r"(?:v=|youtu\.be/|shorts/|live/)([\w-]{11})")
+
+
 def expand(url: str) -> list[dict]:
-    """Ссылка → список видео (плейлист раскрываем). Каждое: {id, url, title}."""
+    """Ссылка → список видео (плейлист раскрываем). Каждое: {id, url, title}.
+    Ссылка на одно видео разбирается без обращения к YouTube."""
+    m = _VIDEO_ID.search(url)
+    if m:
+        return [{"id": m.group(1), "url": f"https://www.youtube.com/watch?v={m.group(1)}", "title": ""}]
     # watch?v=…&list=… — только сам трек; целый плейлист — только по ссылке playlist?list=…
     opts = base_opts() | {"extract_flat": "in_playlist", "playlistend": PLAYLIST_LIMIT, "noplaylist": True}
     with yt_dlp.YoutubeDL(opts) as ydl:
@@ -216,7 +253,25 @@ def expand(url: str) -> list[dict]:
 
 def download(url: str, workdir: Path, progress: Callable[[str, float], None] | None = None,
              on_info: Callable[["Track"], None] | None = None) -> Track:
-    """Скачивает видео (≤1080p, mp4), лучший звук отдельно и обложку. Синхронно — вызывать в потоке."""
+    """Скачивает видео (≤1080p, mp4), лучший звук отдельно и обложку. Синхронно — вызывать в потоке.
+    Если YouTube отказал одним способом — пробует следующий из CLIENT_PLANS."""
+    last: Exception | None = None
+    for i, plan in enumerate(CLIENT_PLANS):
+        for p in list(workdir.iterdir()) if workdir.exists() else []:
+            if p.is_file():
+                p.unlink()
+        try:
+            return _download(url, workdir, plan_opts(plan), progress, on_info)
+        except Exception as e:
+            last = e
+            if not _retryable(e) or i == len(CLIENT_PLANS) - 1:
+                raise
+            log.warning("YouTube: способ %s не сработал (%s) — пробую следующий", plan[0] or "обычный",
+                        str(e).splitlines()[0][:200])
+    raise last  # pragma: no cover
+
+
+def _download(url: str, workdir: Path, opts: dict, progress, on_info) -> Track:
     workdir.mkdir(parents=True, exist_ok=True)
 
     def hook(stage):
@@ -226,7 +281,7 @@ def download(url: str, workdir: Path, progress: Callable[[str, float], None] | N
                 progress(stage, (d.get("downloaded_bytes", 0) / total) if total else 0.0)
         return _h
 
-    with yt_dlp.YoutubeDL(base_opts()) as ydl:
+    with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     if info.get("is_live"):
         raise RuntimeError("Это прямой эфир — дождись, пока он закончится и станет обычным видео.")
@@ -243,7 +298,7 @@ def download(url: str, workdir: Path, progress: Callable[[str, float], None] | N
         on_info(track)
     base = workdir / track.safe_name
 
-    vopts = base_opts() | {"format": VIDEO_FORMAT, "merge_output_format": "mp4",
+    vopts = opts | {"format": VIDEO_FORMAT, "merge_output_format": "mp4",
                            "outtmpl": f"{base} (%(height&{{}}p|video)s).%(ext)s", "progress_hooks": [hook("video")],
                            "writethumbnail": True,
                            "postprocessors": [{"key": "FFmpegThumbnailsConvertor", "format": "jpg"}]}
@@ -251,7 +306,7 @@ def download(url: str, workdir: Path, progress: Callable[[str, float], None] | N
         vinfo = ydl.extract_info(track.url, download=True)
     track.height = int(vinfo.get("height") or 0)
 
-    aopts = base_opts() | {"format": AUDIO_FORMAT, "outtmpl": f"{base}.%(ext)s", "progress_hooks": [hook("audio")],
+    aopts = opts | {"format": AUDIO_FORMAT, "outtmpl": f"{base}.%(ext)s", "progress_hooks": [hook("audio")],
                            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "best"}]}
     with yt_dlp.YoutubeDL(aopts) as ydl:
         ainfo = ydl.extract_info(track.url, download=True)
